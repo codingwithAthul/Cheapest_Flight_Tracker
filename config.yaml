@@ -3,22 +3,22 @@
 # Copy to config.yaml and edit. The daily GitHub Action reads config.yaml.
 # Origin and destination are FIXED; dates are FLEXIBLE within the window.
 
-currency: USD
+currency: CAD
 workers: 8                    # parallel search threads (each provider also has its own cap)
 database: data/tracker.db
 
-# Search: Duffel does the wide date search (free to search).
-# Note: a duffel_test_ token returns sandbox fares only; get a live token for real prices.
+# Search: SerpApi (Google Flights) only, for now. Needs the SERPAPI_API_KEY secret.
 providers:
-  - name: duffel              # needs DUFFEL_ACCESS_TOKEN
-    max_concurrency: 3
+  - name: serpapi
+    max_concurrency: 4
+    gl: ca                    # search from Canada's Google Flights (point of sale)
+  # - name: duffel            # add later with a LIVE token (duffel_test_ tokens return fake fares)
   # - name: mock              # fake data, no keys: python -m flight_tracker run --provider mock
 
-# Final check: SerpApi (Google Flights) re-prices the cheapest date combos Duffel found.
-# Costs top_k SerpApi searches per enabled trip per day (5 x 30 = 150/month for one trip).
-verify:
-  provider: serpapi           # needs SERPAPI_API_KEY
-  top_k: 5
+# Optional final check on a second source; off while SerpApi is the only provider.
+# verify:
+#   provider: serpapi
+#   top_k: 5
 
 notifiers:
   - type: github_summary      # shows the report on the Actions run page (no setup)
@@ -34,43 +34,30 @@ report:
   drop_alert_percent: 5       # alert when today's cheapest is 5%+ below the previous run
 
 trips:
-  # EXAMPLE ROUTE: replace with your own.
-  - name: Toronto to London
-    origin: [YYZ]                 # one airport or a list, e.g. [YYZ, YTZ]
-    destination: [LHR, LGW]
-    trip_type: round_trip         # or one_way
+  - name: Vancouver to Kochi
+    code: T1                      # report folder: "Report/T1 Vancouver - Kochi (Round)"
+    from_name: Vancouver
+    to_name: Kochi
+    origin: [YVR]
+    destination: [COK]
+    trip_type: round_trip
     depart_window:
-      start: "+21d"               # YYYY-MM-DD, or +Nd relative to the run date
-      end: "+90d"
-    nights: {min: 7, max: 14}
+      start: "+14d"               # from 2 weeks out...
+      end: "+180d"                # ...to about 6 months out (relative to each run)
+    nights: {min: 14, max: 35}    # ASSUMPTION: 2-5 week stay; change to your plans
     adults: 1
-    cabin: economy                # economy | premium_economy | business | first
-    target_price: 650             # optional: alert when any fare is at or below this
-    filters:                      # all optional; delete any you don't care about
-      max_stops: 1
-      max_price: 1500
-      max_duration_hours: 20      # per direction, including layovers
-      max_layover_hours: 6
+    cabin: economy
+    # target_price: 1400          # optional: alert when any round trip is at or below this (CAD)
+    filters:
+      max_stops: 2                # there are no nonstops on this route; 1-2 stops is normal
+      max_duration_hours: 40      # per direction, including layovers
       min_layover_minutes: 60
-      exclude_airlines: []        # IATA codes or names, e.g. [F9, "Spirit"]
-      include_airlines: []        # if set, every flight must be on these airlines
-      depart_after: "06:00"
-      depart_before: "23:30"
-      # allowed_weekdays: [1, 2, 3]   # 0=Mon ... 6=Sun (outbound departure)
+      max_layover_hours: 12
     strategy:
-      mode: smart                 # smart = sample the window then zoom in; exhaustive = every combo
-      budget: 60                  # max searches per provider for this trip per day
-      sample_every_days: 3
-      nights_samples: 3
-      refine_top_k: 5
+      mode: smart
+      budget: 8                   # SerpApi searches per day; 8 x 30 = 240/month (fits a 250/month plan)
+      rotate_daily: true          # tiny budget: shift the sampled dates daily to cover the whole window
+      sample_every_days: 7
+      nights_samples: 2
+      refine_top_k: 2
       refine_radius_days: 2
-      keep_offers_per_search: 5
-
-  - name: London to Toronto one-way
-    enabled: false                # flip to true to track it too
-    origin: [LHR, LGW]
-    destination: [YYZ]
-    trip_type: one_way
-    depart_window: {start: "+14d", end: "+60d"}
-    filters: {max_stops: 1}
-    strategy: {budget: 30}
