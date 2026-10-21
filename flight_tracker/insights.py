@@ -72,6 +72,7 @@ class TripSummary:
     alerts: list[str] = field(default_factory=list)
     verification: list["Verification"] = field(default_factory=list)
     sandbox_providers: list[str] = field(default_factory=list)  # e.g. ["duffel-test"]
+    recent_best: list[tuple[date, Optional[date], str, float, str]] = field(default_factory=list)  # dep, ret, route, price, seen
     sandbox_excluded: bool = False  # sandbox fares were left out because real fares exist
 
     @property
@@ -157,6 +158,11 @@ def build_summary(storage: Storage, trip: Trip, run_date: date, config: Config) 
     atl = storage.all_time_low(trip.name, before=run_date, real_only=real)
     s.all_time_low_before = atl["price"] if atl else None
     s.history = storage.daily_minimums(trip.name, limit_days=30, real_only=real)
+
+    s.recent_best = [
+        (_d(r["depart_date"]), _d(r["return_date"]), f"{r['origin']}→{r['destination']}", r["price"], r["seen_on"])
+        for r in storage.recent_best(trip.name, run_date, days=7, limit=5, real_only=real)
+    ]
 
     # Cheapest per departure date, then the best few dates overall.
     per_date: dict[tuple, float] = {}

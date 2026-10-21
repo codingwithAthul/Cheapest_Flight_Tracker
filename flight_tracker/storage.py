@@ -265,6 +265,30 @@ class Storage:
         ).fetchone()
         return row[0] if row else None
 
+    def recent_best(self, trip_name: str, run_date: date, days: int = 7, limit: int = 5,
+                    real_only: bool = False) -> list[sqlite3.Row]:
+        """Cheapest date combos seen in the last `days` runs, each at its most recently observed price.
+
+        With a small daily budget each run only checks a few dates, so this keeps good fares found
+        on earlier days visible in today's report.
+        """
+        since = (run_date - timedelta(days=days - 1)).isoformat()
+        return self.conn.execute(
+            f"""WITH latest AS (
+                    SELECT origin, destination, depart_date, return_date, MAX(run_date) AS seen
+                    FROM offers WHERE trip_name=? AND run_date BETWEEN ? AND ? {_real(real_only)}
+                    GROUP BY origin, destination, depart_date, return_date)
+                SELECT o.origin, o.destination, o.depart_date, o.return_date, l.seen AS seen_on,
+                       MIN(o.price) AS price, o.currency
+                FROM offers o JOIN latest l ON o.origin=l.origin AND o.destination=l.destination
+                     AND o.depart_date=l.depart_date AND COALESCE(o.return_date,'')=COALESCE(l.return_date,'')
+                     AND o.run_date=l.seen
+                WHERE o.trip_name=? AND o.depart_date > ? {_real(real_only).replace("provider", "o.provider")}
+                GROUP BY o.origin, o.destination, o.depart_date, o.return_date
+                ORDER BY price LIMIT ?""",
+            (trip_name, since, run_date.isoformat(), trip_name, run_date.isoformat(), limit),
+        ).fetchall()
+
     def verify_results(self, trip_name: str, run_date: date) -> list[sqlite3.Row]:
         """Each combo re-checked by the verify provider today, with the search providers' best price for it."""
         return self.conn.execute(

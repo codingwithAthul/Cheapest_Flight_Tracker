@@ -198,3 +198,12 @@ def test_probe_command(tmp_path, capsys):
     cfgp.write_text(yaml.safe_dump(raw))
     assert main(["--config", str(cfgp), "--date", "2026-10-21", "probe"]) == 0
     assert "mock: OK" in capsys.readouterr().out
+
+
+def test_recent_best_includes_earlier_days(cfg, storage):
+    for i in range(3):
+        run_day(cfg, storage, TODAY + timedelta(days=i))
+    day = TODAY + timedelta(days=2)
+    s = build_all(storage, cfg, day)[0]
+    assert s.recent_best and [p for *_, p, _ in s.recent_best] == sorted(p for *_, p, _ in s.recent_best)
+    assert all(dep > day for dep, *_ in s.recent_best)

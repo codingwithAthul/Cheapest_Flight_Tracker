@@ -158,6 +158,13 @@ def render_markdown(summaries: list[TripSummary], run_date: date, stats: Optiona
                 f"{d:%d %b}{('→' + r.strftime('%d %b')) if r else ''} {fmt_money(p, s.options[0].currency)}"
                 for d, r, p in s.cheapest_dates))
             lines.append("")
+        if s.recent_best and any(seen != run_date.isoformat() for *_, seen in s.recent_best):
+            lines += ["**Best fares seen in the last 7 days** (latest price for each date pair):", "",
+                      "| Dates | Route | Price | Last checked |", "|---|---|---|---|"]
+            for dep, ret, route, price, seen in s.recent_best:
+                dates = f"{dep:%a %d %b}" + (f" → {ret:%a %d %b}" if ret else "")
+                lines.append(f"| {dates} | {route} | {fmt_money(price, s.options[0].currency)} | {seen} |")
+            lines.append("")
         if s.verification:
             provider = s.verification[0].verify_provider
             lines += [f"**Final check on {provider}** (top {len(s.verification)} date combos re-priced):", "",
