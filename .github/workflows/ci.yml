@@ -24,3 +24,27 @@ jobs:
           python -m flight_tracker --config config.example.yaml plan
           python -m flight_tracker --config config.example.yaml --db /tmp/smoke.db run --provider mock --no-notify > /tmp/report.md
           grep -q "Daily flight report" /tmp/report.md
+
+  # Proves the real API keys work: one live search per provider in config.yaml
+  # (uses 1 SerpApi credit per run). Skipped until the repo secrets exist.
+  live-keys:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      DUFFEL_ACCESS_TOKEN: ${{ secrets.DUFFEL_ACCESS_TOKEN }}
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe providers
+        run: |
+          if [ -z "$DUFFEL_ACCESS_TOKEN$SERPAPI_API_KEY" ]; then
+            echo "::notice::No provider secrets set yet; skipping the live key check."
+            exit 0
+          fi
+          python -m flight_tracker probe | tee -a "$GITHUB_STEP_SUMMARY"
