@@ -1,0 +1,124 @@
+"""SerpApi Google Flights provider (https://serpapi.com/google-flights-api).
+
+Credentials: set SERPAPI_API_KEY (or the env var named in `api_key_env`).
+
+Each search() costs one SerpApi search credit. For round trips, Google
+Flights returns the round-trip price but only outbound flight details.
+Return-leg details need a second call per offer (`departure_token`), which
+we skip to save budget. The report links to the Google Flights page for
+the full itinerary.
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime
+
+import requests
+
+from ..models import FlightOffer, Leg, SearchQuery, Segment
+from .base import Provider, ProviderError, TransientProviderError
+
+ENDPOINT = "https://serpapi.com/search.json"
+TRAVEL_CLASS = {"economy": 1, "premium_economy": 2, "business": 3, "first": 4}
+NO_RESULTS_HINTS = ("hasn't returned any results", "no results")
+
+
+def _stops_param(max_stops):
+    # SerpApi: 0 any, 1 nonstop only, 2 one stop or fewer, 3 two stops or fewer
+    if max_stops is None or max_stops >= 3:
+        return 0
+    return max_stops + 1
+
+
+def _parse_time(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%d %H:%M")
+
+
+class SerpApiProvider(Provider):
+    name = "serpapi"
+    max_concurrency = 4
+    min_interval = 0.25
+
+    def __init__(self, **options):
+        super().__init__(**options)
+        self.api_key = os.environ.get(options.get("api_key_env", "SERPAPI_API_KEY"), "")
+        self.timeout = float(options.get("timeout", 60))
+        self.gl = options.get("gl", "us")
+        self.hl = options.get("hl", "en")
+        self.session = requests.Session()
+
+    def check_ready(self) -> None:
+        if not self.api_key:
+            raise ProviderError("serpapi: SERPAPI_API_KEY is not set")
+
+    def build_params(self, q: SearchQuery) -> dict:
+        params = {
+            "engine": "google_flights",
+            "departure_id": q.origin,
+            "arrival_id": q.destination,
+            "outbound_date": q.depart_date.isoformat(),
+            "type": 1 if q.is_round_trip else 2,
+            "currency": q.currency,
+            "adults": q.adults,
+            "travel_class": TRAVEL_CLASS.get(q.cabin, 1),
+            "stops": _stops_param(q.max_stops),
+            "hl": self.hl,
+            "gl": self.gl,
+            "api_key": self.api_key,
+        }
+        if q.return_date:
+            params["return_date"] = q.return_date.isoformat()
+        return params
+
+    def search(self, query: SearchQuery) -> list[FlightOffer]:
+        try:
+            resp = self.session.get(ENDPOINT, params=self.build_params(query), timeout=self.timeout)
+        except requests.RequestException as e:
+            raise TransientProviderError(f"serpapi: network error: {e}") from e
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise TransientProviderError(f"serpapi: HTTP {resp.status_code}")
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise TransientProviderError("serpapi: invalid JSON") from e
+        if resp.status_code >= 400 or data.get("error"):
+            msg = str(data.get("error") or f"HTTP {resp.status_code}")
+            if any(h in msg.lower() for h in NO_RESULTS_HINTS):
+                return []
+            raise ProviderError(f"serpapi: {msg}")
+        return self.parse(query, data)
+
+    def parse(self, query: SearchQuery, data: dict) -> list[FlightOffer]:
+        url = (data.get("search_metadata") or {}).get("google_flights_url", "")
+        currency = (data.get("search_parameters") or {}).get("currency", query.currency)
+        offers = []
+        for group in ("best_flights", "other_flights"):
+            for item in data.get(group) or []:
+                price = item.get("price")
+                flights = item.get("flights") or []
+                if price is None or not flights:
+                    continue
+                segments = []
+                for f in flights:
+                    fn = str(f.get("flight_number", "")).strip()
+                    code = fn.split(" ")[0] if " " in fn else ""
+                    segments.append(Segment(
+                        origin=f["departure_airport"]["id"],
+                        destination=f["arrival_airport"]["id"],
+                        depart_at=_parse_time(f["departure_airport"]["time"]),
+                        arrive_at=_parse_time(f["arrival_airport"]["time"]),
+                        carrier=code or f.get("airline", ""),
+                        carrier_name=f.get("airline", ""),
+                        flight_number=fn.split(" ")[-1] if fn else "",
+                    ))
+                offers.append(FlightOffer(
+                    provider=self.name,
+                    query=query,
+                    price=float(price),
+                    currency=currency,
+                    outbound=Leg(segments=segments, duration_minutes=item.get("total_duration")),
+                    inbound=None,
+                    booking_url=url,
+                ))
+        return offers
