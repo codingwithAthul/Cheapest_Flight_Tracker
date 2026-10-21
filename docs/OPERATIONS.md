@@ -20,9 +20,9 @@
 - Locally: `python -m flight_tracker probe` runs one real search per
   configured provider (and the verify provider) and prints OK/FAILED, the
   offer count and the cheapest fare. It also flags Duffel test keys.
-- In GitHub: the `live-keys` job in `ci.yml` runs the same probe on every
-  push and PR once the secrets exist (1 SerpApi credit each time). Its output
-  appears in the job summary.
+- In GitHub: go to *Actions → CI → Run workflow*. The `live-keys` job runs
+  the same probe (1 SerpApi credit) and prints the plan quota in the job
+  summary. It is manual only, to protect the 250/month free plan.
 
 ## Secrets
 
