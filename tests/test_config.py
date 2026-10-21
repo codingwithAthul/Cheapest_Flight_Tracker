@@ -83,3 +83,17 @@ def test_verify_block():
     raw["verify"] = {"top_k": 3}
     with pytest.raises(ConfigError, match="provider"):
         parse_config(raw, today=TODAY)
+
+
+def test_report_folder_name():
+    cfg = parse_config(base_raw(code="T1", from_name="Vancouver", to_name="Kochi"), today=TODAY)
+    assert cfg.trips[0].report_folder == "T1 Vancouver - Kochi (Round)"
+    cfg = parse_config(base_raw(trip_type="one_way"), today=TODAY)
+    assert cfg.trips[0].report_folder == "T1 YYZ - LHR+LGW (One-Way)"
+
+
+def test_report_folder_defaults_and_validation():
+    with pytest.raises(ConfigError, match="code"):
+        parse_config(base_raw(code="T 1"), today=TODAY)
+    with pytest.raises(ConfigError, match="from_name"):
+        parse_config(base_raw(from_name="Vancouver: BC"), today=TODAY)

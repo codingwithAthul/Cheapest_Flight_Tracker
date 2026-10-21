@@ -18,6 +18,7 @@ from typing import Any, Optional
 import yaml
 
 IATA_RE = re.compile(r"^[A-Z]{3}$")
+CODE_RE = re.compile(r"^[A-Za-z0-9]+$")
 CABINS = {"economy", "premium_economy", "business", "first"}
 TRIP_TYPES = {"one_way", "round_trip"}
 
@@ -78,10 +79,19 @@ class Trip:
     strategy: Strategy = field(default_factory=Strategy)
     target_price: Optional[float] = None  # alert when any offer is at or below this
     enabled: bool = True
+    code: str = ""  # e.g. "T1"; names the trip's report folder
+    from_name: str = ""  # display names, e.g. "Vancouver"; default to the airport codes
+    to_name: str = ""
 
     @property
     def is_round_trip(self) -> bool:
         return self.trip_type == "round_trip"
+
+    @property
+    def report_folder(self) -> str:
+        """e.g. 'T1 Vancouver - Kochi (Round)'. No ':' or '/' so it is a valid folder name on every OS."""
+        kind = "Round" if self.is_round_trip else "One-Way"
+        return f"{self.code} {self.from_name} - {self.to_name} ({kind})"
 
 
 @dataclass
@@ -208,7 +218,7 @@ def _parse_strategy(raw: dict, where: str) -> Strategy:
 def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
     where = f"trips[{idx}]"
     allowed = {"name", "origin", "destination", "trip_type", "depart_window", "nights", "adults",
-               "cabin", "filters", "strategy", "target_price", "enabled"}
+               "cabin", "filters", "strategy", "target_price", "enabled", "code", "from_name", "to_name"}
     _known(raw, allowed, where)
     for req in ("origin", "destination", "depart_window"):
         if req not in raw:
@@ -247,6 +257,15 @@ def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
     cabin = raw.get("cabin", "economy")
     if cabin not in CABINS:
         raise ConfigError(f"{where}.cabin must be one of {sorted(CABINS)}")
+    code = str(raw.get("code") or f"T{idx + 1}").strip()
+    if not CODE_RE.match(code):
+        raise ConfigError(f"{where}.code: {code!r} must be letters/digits only, e.g. T1")
+    names = {}
+    for key, default in (("from_name", "+".join(origins)), ("to_name", "+".join(destinations))):
+        value = str(raw.get(key) or default).strip()
+        if any(c in value for c in '/\\:*?"<>|'):
+            raise ConfigError(f"{where}.{key}: {value!r} can't contain / \\ : * ? \" < > |")
+        names[key] = value
     adults = int(raw.get("adults", 1))
     if not 1 <= adults <= 9:
         raise ConfigError(f"{where}.adults must be 1..9")
@@ -265,6 +284,8 @@ def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
         strategy=_parse_strategy(raw.get("strategy"), f"{where}.strategy"),
         target_price=raw.get("target_price"),
         enabled=bool(raw.get("enabled", True)),
+        code=code,
+        **names,
     )
 
 
@@ -281,6 +302,9 @@ def parse_config(raw: dict, today: Optional[date] = None) -> Config:
     names = [t.name for t in trips]
     if len(names) != len(set(names)):
         raise ConfigError("config: trip names must be unique")
+    codes = [t.code for t in trips]
+    if len(codes) != len(set(codes)):
+        raise ConfigError("config: trip codes must be unique")
 
     providers = []
     for i, p in enumerate(raw.get("providers") or [{"name": "mock"}]):
