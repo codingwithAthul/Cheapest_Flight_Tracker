@@ -71,3 +71,15 @@ def test_example_config_is_valid():
 
     from flight_tracker.config import load_config
     load_config(Path(__file__).resolve().parents[1] / "config.example.yaml", today=TODAY)
+
+
+def test_verify_block():
+    raw = base_raw()
+    raw["verify"] = {"provider": "serpapi", "top_k": 3}
+    v = parse_config(raw, today=TODAY).verify
+    assert v.provider == "serpapi" and v.top_k == 3
+    raw["verify"] = {"provider": "serpapi", "enabled": False}
+    assert parse_config(raw, today=TODAY).verify is None
+    raw["verify"] = {"top_k": 3}
+    with pytest.raises(ConfigError, match="provider"):
+        parse_config(raw, today=TODAY)

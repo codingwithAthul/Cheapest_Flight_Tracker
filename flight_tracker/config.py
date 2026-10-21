@@ -105,11 +105,21 @@ class ReportConfig:
 
 
 @dataclass
+class VerifyConfig:
+    """Final check: re-price the cheapest date combos found by the search providers on a second source."""
+
+    provider: str
+    top_k: int = 5  # distinct airport/date combos re-checked per trip per run
+    options: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class Config:
     trips: list[Trip]
     providers: list[ProviderConfig]
     notifiers: list[NotifierConfig]
     report: ReportConfig
+    verify: Optional[VerifyConfig] = None
     currency: str = "USD"
     workers: int = 8
     database: str = "data/tracker.db"
@@ -262,7 +272,7 @@ def parse_config(raw: dict, today: Optional[date] = None) -> Config:
     today = today or date.today()
     if not isinstance(raw, dict):
         raise ConfigError("config must be a mapping")
-    _known(raw, {"currency", "workers", "database", "trips", "providers", "notifiers", "report"}, "config")
+    _known(raw, {"currency", "workers", "database", "trips", "providers", "notifiers", "report", "verify"}, "config")
 
     trips_raw = raw.get("trips") or []
     if not trips_raw:
@@ -292,6 +302,18 @@ def parse_config(raw: dict, today: Optional[date] = None) -> Config:
     _known(rep_raw, set(ReportConfig.__dataclass_fields__), "report")
     report = ReportConfig(**rep_raw)
 
+    verify = None
+    ver_raw = raw.get("verify")
+    if ver_raw:
+        _known(ver_raw, {"provider", "top_k", "enabled", "options"}, "verify")
+        if "provider" not in ver_raw:
+            raise ConfigError("verify: missing 'provider'")
+        if ver_raw.get("enabled", True):
+            verify = VerifyConfig(provider=ver_raw["provider"], top_k=int(ver_raw.get("top_k", 5)),
+                                  options=dict(ver_raw.get("options") or {}))
+            if verify.top_k < 1:
+                raise ConfigError("verify.top_k must be >= 1")
+
     workers = int(raw.get("workers", 8))
     if workers < 1:
         raise ConfigError("workers must be >= 1")
@@ -301,6 +323,7 @@ def parse_config(raw: dict, today: Optional[date] = None) -> Config:
         providers=providers,
         notifiers=notifiers,
         report=report,
+        verify=verify,
         currency=str(raw.get("currency", "USD")).upper(),
         workers=workers,
         database=str(raw.get("database", "data/tracker.db")),
