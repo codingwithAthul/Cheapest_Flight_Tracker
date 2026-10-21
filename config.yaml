@@ -7,12 +7,18 @@ currency: USD
 workers: 8                    # parallel search threads (each provider also has its own cap)
 database: data/tracker.db
 
+# Search: Duffel does the wide date search (free to search).
+# Note: a duffel_test_ token returns sandbox fares only; get a live token for real prices.
 providers:
-  - name: mock                # fake data: works with no keys. Swap for serpapi and/or duffel.
-  # - name: serpapi           # needs SERPAPI_API_KEY
-  #   max_concurrency: 4
-  # - name: duffel            # needs DUFFEL_ACCESS_TOKEN
-  #   max_concurrency: 3
+  - name: duffel              # needs DUFFEL_ACCESS_TOKEN
+    max_concurrency: 3
+  # - name: mock              # fake data, no keys: python -m flight_tracker run --provider mock
+
+# Final check: SerpApi (Google Flights) re-prices the cheapest date combos Duffel found.
+# Costs top_k SerpApi searches per enabled trip per day (5 x 30 = 150/month for one trip).
+verify:
+  provider: serpapi           # needs SERPAPI_API_KEY
+  top_k: 5
 
 notifiers:
   - type: github_summary      # shows the report on the Actions run page (no setup)

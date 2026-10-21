@@ -8,11 +8,16 @@ workers: 8                    # parallel search threads (each provider also has 
 database: data/tracker.db
 
 providers:
-  - name: mock                # fake data: works with no keys. Swap for serpapi and/or duffel.
+  - name: mock                # fake data: works with no keys. Swap for duffel and/or serpapi.
+  # - name: duffel            # needs DUFFEL_ACCESS_TOKEN (free to search; duffel_test_ tokens = sandbox data)
+  #   max_concurrency: 3
   # - name: serpapi           # needs SERPAPI_API_KEY
   #   max_concurrency: 4
-  # - name: duffel            # needs DUFFEL_ACCESS_TOKEN
-  #   max_concurrency: 3
+
+# Optional final check: a second provider re-prices the top_k cheapest date combos found above.
+# verify:
+#   provider: serpapi
+#   top_k: 5
 
 notifiers:
   - type: github_summary      # shows the report on the Actions run page (no setup)
