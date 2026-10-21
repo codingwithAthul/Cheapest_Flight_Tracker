@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:   # run by hand to also check the live API keys
 
 jobs:
   test:
@@ -25,12 +26,13 @@ jobs:
           python -m flight_tracker --config config.example.yaml --db /tmp/smoke.db run --provider mock --no-notify > /tmp/report.md
           grep -q "Daily flight report" /tmp/report.md
 
-  # Proves the real API keys work: one live search per provider in config.yaml
-  # (uses 1 SerpApi credit per run). Skipped until the repo secrets exist.
+  # Proves the real API keys work: one live search per provider in config.yaml.
+  # Manual only (Actions → CI → Run workflow): each run uses 1 SerpApi credit,
+  # and the free plan is only 250/month.
   live-keys:
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch'
     env:
       DUFFEL_ACCESS_TOKEN: ${{ secrets.DUFFEL_ACCESS_TOKEN }}
       SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
