@@ -55,7 +55,7 @@ trips:
       max_layover_hours: 12
     strategy:
       mode: smart
-      budget: 8                   # SerpApi searches per day; 8 x 30 = 240/month (fits a 250/month plan)
+      budget: 7                   # SerpApi Free Plan = 250/month: 7 x 31 = 217, leaving ~30 for manual runs and probes
       rotate_daily: true          # tiny budget: shift the sampled dates daily to cover the whole window
       sample_every_days: 7
       nights_samples: 2
