@@ -3,7 +3,7 @@
 #   plan    → works out how many parallel shards to run (one per enabled trip, capped)
 #   search  → matrix of parallel jobs; each searches its share of the trips into its own SQLite file
 #   report  → merges the shard DBs into the history DB on the `data` branch, builds the
-#             report, sends notifications, and commits the DB + report back to `data`
+#             report, sends notifications, commits Report/<trip folder>/ to main and the DB to `data`
 #
 # Secrets used (only those for the providers/notifiers enabled in config.yaml are needed):
 #   SERPAPI_API_KEY, DUFFEL_ACCESS_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
@@ -132,10 +132,21 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
-        run: python -m flight_tracker --db state/tracker.db report --output-dir state/reports
+        run: python -m flight_tracker --db state/tracker.db report --output-dir Report
 
       - name: Prune old offers (keeps each day's cheapest forever)
         run: python -m flight_tracker --db state/tracker.db prune --keep-days 120
+
+      - name: Save the trip reports to main (Report/<trip folder>/)
+        if: always() && github.ref == 'refs/heads/main'
+        run: |
+          git add Report
+          if git diff --cached --quiet; then echo "no report changes"; exit 0; fi
+          git commit -m "report: daily flight report $(date -u +%F)"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && break
+            sleep $((i * 5))
+          done
 
       - name: Save history to the data branch
         if: always()
