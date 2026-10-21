@@ -5,7 +5,7 @@
 
 _Last updated: 2026-10-21_
 
-## Status: v0.1 built, waiting on the owner's choices before going live
+## Status: v0.2 (Duffel search + SerpApi final check), waiting on secrets and route
 
 The full pipeline works end to end with the **mock** provider: plan →
 parallel search → filter → SQLite → insights → report → notify. That
@@ -27,18 +27,29 @@ need an API key. See "Waiting on owner" below.
 - [x] Workflows: `daily.yml` (plan → matrix search → merge+report → save to `data` branch) and `ci.yml`
 - [x] Tests (pytest, no network): config, planner, filters, provider parsers, pipeline, CLI shards/merge
 - [x] Docs: README, docs/ARCHITECTURE.md, CONFIGURATION.md, PROVIDERS.md, OPERATIONS.md
+- [x] Verify stage: Duffel searches, SerpApi re-prices the top-K combos (`config.verify`)
+- [x] Duffel test-token detection (`duffel-test`); sandbox fares never outrank real ones
+- [x] `probe` command and `live-keys` CI job to check API keys
 
 ## Waiting on owner (decisions only they can make)
 
-1. **Real route.** `config.yaml` has an EXAMPLE route (YYZ → LHR/LGW). Replace it with the real origin, destination, window, nights and filters.
-2. **Data source.** The recommendation is SerpApi (Google Flights). Add the `SERPAPI_API_KEY` repo secret and switch `providers` in `config.yaml`.
-3. **Report channel.** The recommendation is Telegram. Add the `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` secrets and enable the `telegram` notifier.
+1. **Add the API keys as GitHub secrets.** Athul shared a Duffel key and a
+   SerpApi key in chat on 2026-10-21. They must go into *Settings → Secrets and
+   variables → Actions* as `DUFFEL_ACCESS_TOKEN` and `SERPAPI_API_KEY`. The
+   build environment can't set repo secrets or reach either API, so the keys
+   are untested. Never commit keys to the repo.
+2. **Live Duffel token.** The shared key is `duffel_test_…`, which returns
+   sandbox fares only. The SerpApi final check is the only real pricing until
+   a live token is added.
+3. **Real route.** `config.yaml` still has the EXAMPLE route (YYZ → LHR/LGW).
+4. **Report channel.** Telegram is recommended, but nothing has been chosen yet.
 
 ## Next up (in order)
 
-1. Apply the owner's route, provider and channel choices to `config.yaml`, then run the workflow manually once.
-2. Tune `strategy.budget` against the provider's plan quota (`python -m flight_tracker plan` shows calls per day and per month).
-3. Roadmap items in PROJECT.md (return-leg details for SerpApi, price prediction, dashboard).
+1. Once the secrets exist, check the `live-keys` CI job output (it runs `probe`).
+2. Apply the route and channel to `config.yaml`, then run *Daily flight search* manually.
+3. Tune `strategy.budget` and `verify.top_k` to the SerpApi plan quota (`plan` shows calls per month).
+4. Roadmap items in PROJECT.md.
 
 ## How to resume quickly
 
@@ -52,3 +63,4 @@ python -m flight_tracker --db /tmp/t.db run --provider mock --no-notify
 ## Log
 
 - 2026-10-21: Built v0.1 from an empty repo (README + LICENSE only). Amadeus Self-Service was shut down in July 2026 and Kiwi Tequila is closed to new sign-ups, so they are not supported.
+- 2026-10-21: Athul chose Duffel for search with SerpApi as the final check, and set a rule: one commit per small chunk of code. Added the verify stage, sandbox handling, probe and the live-keys CI job.

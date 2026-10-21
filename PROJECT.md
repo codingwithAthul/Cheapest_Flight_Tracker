@@ -41,7 +41,7 @@ date window to find the lowest fares.
 | Storage | SQLite (`data/tracker.db`) | Zero-ops, a single file, easy to persist on a git branch |
 | Scheduler | GitHub Actions cron | Free, no server, secrets management built in |
 | Persistence across runs | `data` branch holding the DB and reports | Keeps history out of `main` and is auditable |
-| Data sources | Pluggable providers: `mock`, `serpapi` (Google Flights), `duffel` | Amadeus Self-Service shut down in July 2026 and Kiwi Tequila is closed to new sign-ups |
+| Data sources | Duffel searches the window (free); SerpApi (Google Flights) re-prices the top-K as a final check. Pluggable: `mock`, `serpapi`, `duffel` | Amadeus Self-Service shut down in July 2026 and Kiwi Tequila is closed to new sign-ups |
 | Search cost control | Daily **search budget** plus a two-phase **sample → zoom** planner | Flexible dates explode combinatorially, and paid APIs charge per search |
 | Parallelism | Thread pool (I/O bound) plus Actions matrix sharding by trip | Fast runs without hammering providers |
 | Report ordering | Sorted by price, plus a separate "best value" pick (price + time cost) | You asked for price order; value is an optional extra lens |
