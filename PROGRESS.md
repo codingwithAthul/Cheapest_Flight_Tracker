@@ -36,12 +36,12 @@ need an API key. See "Waiting on owner" below.
 1. **Stay length and window.** T1 assumes a 14–35 night stay and departures 2 weeks to 6 months out. Athul hasn't confirmed this yet.
 2. **Report channel.** Reports are committed to `Report/` and shown in the Actions summary. Telegram or email isn't chosen yet.
 3. **Duffel.** Parked: Athul is unsure about the charges. Only the test key exists, and it isn't in secrets.
-4. **SerpApi plan size.** The budget of 8 searches/day assumes about 250/month. Check the `live-keys` CI output for the real quota, then retune `strategy.budget`.
+4. **SerpApi quota.** The key is confirmed working (Free Plan, 250/month, first live fare CAD 1,803 on Air India). The budget is 7/day, about 217/month.
 
 ## Next up (in order)
 
 1. Merge PR #1, then run *Actions → Daily flight search → Run workflow* once.
-2. Retune the budget to the real SerpApi quota.
+2. Upgrade the SerpApi plan if 7 searches/day turns out too sparse.
 3. Roadmap items in PROJECT.md.
 
 ## How to resume quickly
