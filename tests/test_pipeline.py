@@ -176,3 +176,14 @@ def test_sandbox_only_is_still_reported(cfg, storage):
     SearchEngine(cfg, [Sandbox(today=TODAY)], storage, run_id, TODAY, base_delay=0).run(cfg.trips)
     s = build_all(storage, cfg, TODAY)[0]
     assert s.options and not s.sandbox_excluded and s.sandbox_providers == ["duffel-test"]
+
+
+def test_report_shows_sandbox_warning_and_final_check(cfg, storage):
+    run_id = storage.start_run(TODAY)
+    SearchEngine(cfg, [Sandbox(today=TODAY)], storage, run_id, TODAY, base_delay=0,
+                 verifier=Verifier(today=TODAY), verify_top_k=2).run(cfg.trips)
+    summaries = build_all(storage, cfg, TODAY)
+    md = render_markdown(summaries, TODAY)
+    assert "TEST key" in md and "Final check on verifier" in md
+    assert "Final check" in render_html(summaries, TODAY)
+    assert "Final check" in render_telegram(summaries, TODAY)[0]

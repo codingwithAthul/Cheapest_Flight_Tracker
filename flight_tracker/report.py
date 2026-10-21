@@ -58,6 +58,34 @@ def option_dates(o: Option) -> str:
     return f"{fmt_date(o.depart_date)} (one-way)"
 
 
+def sandbox_note(s: TripSummary) -> str:
+    if not s.sandbox_providers:
+        return ""
+    names = ", ".join(s.sandbox_providers)
+    if s.sandbox_excluded:
+        return (f"{names} ran with a TEST key, so its fares are synthetic. They were used only to pick dates; "
+                f"the prices below are from real sources.")
+    return f"{names} ran with a TEST key: every price below is synthetic sandbox data, not a real fare."
+
+
+def verify_rows(s: TripSummary) -> list[tuple[str, str, str, str, str]]:
+    """(dates, route, search price, verified price, difference) for the final-check table."""
+    out = []
+    for v in s.verification:
+        cur = s.options[0].currency if s.options else ""
+        dates = f"{v.depart_date:%a %d %b}" + (f" → {v.return_date:%a %d %b}" if v.return_date else "")
+        search = f"{fmt_money(v.search_price, cur)} ({v.search_providers})" if v.search_price is not None else "—"
+        if not v.ok:
+            verified, diff = "check failed", "—"
+        elif v.verify_price is None:
+            verified, diff = "no matching fare", "—"
+        else:
+            verified = fmt_money(v.verify_price, cur)
+            diff = "—" if v.diff is None else ("same" if abs(v.diff) < 1 else f"{'▲' if v.diff > 0 else '▼'} {abs(v.diff):,.0f}")
+        out.append((dates, f"{v.origin}→{v.destination}", search, verified, diff))
+    return out
+
+
 def _trip_header(s: TripSummary) -> str:
     t = s.trip
     kind = f"return, {t.nights_min}-{t.nights_max} nights" if t.is_round_trip else "one-way"
@@ -89,6 +117,8 @@ def render_markdown(summaries: list[TripSummary], run_date: date, stats: Optiona
     lines = [f"# ✈️ Daily flight report — {fmt_date(run_date)}", ""]
     for s in summaries:
         lines += [f"## {s.trip.name}", "", f"_{_trip_header(s)}_", "", _headline(s), ""]
+        if sandbox_note(s):
+            lines += [f"> ⚠️ {sandbox_note(s)}", ""]
         for a in s.alerts:
             lines.append(f"> 🔔 **{a}**")
         if s.alerts:
@@ -128,6 +158,12 @@ def render_markdown(summaries: list[TripSummary], run_date: date, stats: Optiona
                 f"{d:%d %b}{('→' + r.strftime('%d %b')) if r else ''} {fmt_money(p, s.options[0].currency)}"
                 for d, r, p in s.cheapest_dates))
             lines.append("")
+        if s.verification:
+            provider = s.verification[0].verify_provider
+            lines += [f"**Final check on {provider}** (top {len(s.verification)} date combos re-priced):", "",
+                      "| Dates | Route | Search price | Verified price | Difference |", "|---|---|---|---|---|"]
+            lines += [f"| {a} | {b} | {c} | {d} | {e} |" for a, b, c, d, e in verify_rows(s)]
+            lines.append("")
     if stats:
         lines.append(f"---\n_Searches: {stats.get('ok', 0)} ok, {stats.get('failed', 0)} failed "
                      f"(across {stats.get('runs', 0)} worker run(s))._")
@@ -152,6 +188,8 @@ def render_html(summaries: list[TripSummary], run_date: date, stats: Optional[di
         out.append(f"<p>{e(_headline(s)).replace('**', '')}</p>")
         for a in s.alerts:
             out.append(f"<p style=\"background:#fff4d6;padding:6px 10px;border-radius:6px\">🔔 <b>{e(a)}</b></p>")
+        if sandbox_note(s):
+            out.append(f"<p style=\"background:#fde8e8;padding:6px 10px;border-radius:6px\">⚠️ {e(sandbox_note(s))}</p>")
         if not s.options:
             continue
         out.append("<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:13px\">")
@@ -166,6 +204,14 @@ def render_html(summaries: list[TripSummary], run_date: date, stats: Optional[di
                 f"<td>{e(o.airlines)}</td><td>{e(leg_line(o.outbound))}</td><td>{e(back)}</td><td>{link}</td></tr>"
             )
         out.append("</table>")
+        if s.verification:
+            out.append(f"<p><b>Final check on {e(s.verification[0].verify_provider)}</b></p>")
+            out.append("<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:13px\">"
+                       "<tr style=\"background:#f2f4f7;text-align:left\"><th>Dates</th><th>Route</th>"
+                       "<th>Search price</th><th>Verified</th><th>Δ</th></tr>")
+            for row in verify_rows(s):
+                out.append("<tr>" + "".join(f"<td>{e(c)}</td>" for c in row) + "</tr>")
+            out.append("</table>")
         if s.best_value:
             b = s.best_value
             out.append(f"<p><b>Best value:</b> {e(fmt_money(b.price, b.currency))} · {e(option_dates(b))} · "
@@ -189,6 +235,8 @@ def render_telegram(summaries: list[TripSummary], run_date: date, top: int = 5) 
         lines.append(e(_headline(s).replace("**", "").replace("`", "")))
         for a in s.alerts:
             lines.append(f"🔔 <b>{e(a)}</b>")
+        if sandbox_note(s):
+            lines.append(f"⚠️ {e(sandbox_note(s))}")
         lines.append("")
         for o in s.options[:top]:
             price = f"<b>{e(fmt_money(o.price, o.currency))}</b>"
@@ -201,6 +249,10 @@ def render_telegram(summaries: list[TripSummary], run_date: date, top: int = 5) 
             b = s.best_value
             lines.append(f"\n⭐ Best value: {e(fmt_money(b.price, b.currency))} · {e(option_dates(b))} · "
                          f"{fmt_minutes(b.duration_minutes)}")
+        if s.verification:
+            lines.append(f"\n✅ Final check ({e(s.verification[0].verify_provider)}):")
+            for dates, route, search, verified, diff in verify_rows(s):
+                lines.append(f"    {e(dates)} {e(route)}: {e(verified)} (search {e(search)}, {e(diff)})")
         msg = "\n".join(lines)
         msgs.append(msg[:4000])
     return msgs
