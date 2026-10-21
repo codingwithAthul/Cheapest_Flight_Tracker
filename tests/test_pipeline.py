@@ -187,3 +187,13 @@ def test_report_shows_sandbox_warning_and_final_check(cfg, storage):
     assert "TEST key" in md and "Final check on verifier" in md
     assert "Final check" in render_html(summaries, TODAY)
     assert "Final check" in render_telegram(summaries, TODAY)[0]
+
+
+def test_probe_command(tmp_path, capsys):
+    import yaml
+    raw = base_raw()
+    raw["verify"] = {"provider": "mock", "top_k": 2}
+    cfgp = tmp_path / "c.yaml"
+    cfgp.write_text(yaml.safe_dump(raw))
+    assert main(["--config", str(cfgp), "--date", "2026-10-21", "probe"]) == 0
+    assert "mock: OK" in capsys.readouterr().out

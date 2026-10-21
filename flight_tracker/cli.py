@@ -6,6 +6,7 @@ Commands
   merge     Merge shard databases into the main database.
   report    Build today's report from the database and deliver it.
   run       search + report in one go (the usual local / single-job command).
+  probe     One live search per provider, to check that the API keys work.
   history   Print a trip's daily cheapest-fare history.
   prune     Delete old offers (keeps each day's cheapest forever).
 """
@@ -179,6 +180,40 @@ def cmd_report(cfg: Config, args, storage: Storage, run_date: date) -> int:
     return 1 if failures else 0
 
 
+def cmd_probe(cfg: Config, args, run_date: date) -> int:
+    """One real search per configured provider (and the verify provider) to prove the keys work."""
+    from datetime import timedelta
+
+    from .models import SearchQuery
+
+    trip = select_trips(cfg, None, args.trip)[0]
+    days = trip.depart_window.days()
+    dep = days[len(days) // 2]
+    q = SearchQuery(trip_name=trip.name, origin=trip.origins[0], destination=trip.destinations[0],
+                    depart_date=dep, return_date=dep + timedelta(days=trip.nights_min) if trip.is_round_trip else None,
+                    adults=trip.adults, cabin=trip.cabin, currency=cfg.currency, max_stops=trip.filters.max_stops)
+    names = [p.name for p in cfg.providers] + ([cfg.verify.provider] if cfg.verify else [])
+    failures = 0
+    print(f"probe: {q.origin}->{q.destination} {q.depart_date} -> {q.return_date or '-'}")
+    for name in dict.fromkeys(names):
+        p = create_provider(name, **({"today": run_date} if name == "mock" else {}))
+        try:
+            p.check_ready()
+            offers = p.search(q)
+        except ProviderError as e:
+            failures += 1
+            print(f"  {name}: FAILED: {e}")
+            continue
+        sandbox = " (TEST key: sandbox data, not real fares)" if getattr(p, "sandbox", False) else ""
+        if offers:
+            cheapest = min(offers, key=lambda o: o.price)
+            print(f"  {name}: OK{sandbox}: {len(offers)} offers, cheapest {cheapest.currency} {cheapest.price:,.2f} "
+                  f"on {', '.join(cheapest.airlines)}")
+        else:
+            print(f"  {name}: OK{sandbox}: no offers for this date")
+    return 1 if failures else 0
+
+
 def cmd_merge(storage: Storage, args) -> int:
     total = 0
     for src in args.sources:
@@ -225,6 +260,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     common(sub.add_parser("search", help="run searches only"), search=True)
     common(sub.add_parser("report", help="build and send the report"), report=True)
     common(sub.add_parser("run", help="search + report"), search=True, report=True)
+    pb = sub.add_parser("probe", help="one live search per provider to check API keys")
+    pb.add_argument("--trip")
     m = sub.add_parser("merge", help="merge shard DBs into the main DB")
     m.add_argument("sources", nargs="+")
     h = sub.add_parser("history", help="daily cheapest fares")
@@ -250,6 +287,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "plan":
         return cmd_plan(cfg, args)
+    if args.command == "probe":
+        return cmd_probe(cfg, args, run_date)
 
     storage = Storage(args.db or cfg.database)
     try:
