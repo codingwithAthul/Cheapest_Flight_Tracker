@@ -134,3 +134,22 @@ def test_bad_config_exit_code(tmp_path):
     p = tmp_path / "c.yaml"
     p.write_text("trips: []\n")
     assert main(["--config", str(p), "plan"]) == 2
+
+
+class Verifier(MockProvider):
+    name = "verifier"
+
+
+def test_verify_stage_rechecks_top_combos(cfg, storage):
+    run_id = storage.start_run(TODAY)
+    engine = SearchEngine(cfg, [MockProvider(today=TODAY)], storage, run_id, TODAY, base_delay=0,
+                          verifier=Verifier(today=TODAY), verify_top_k=3)
+    s = engine.run(cfg.trips)["T1"]
+    assert s.verified == 3
+    rows = storage.conn.execute("SELECT provider, phase FROM searches WHERE phase='verify'").fetchall()
+    assert len(rows) == 3 and {r["provider"] for r in rows} == {"verifier"}
+    # a same-day re-run doesn't pay for the verify calls again
+    engine2 = SearchEngine(cfg, [MockProvider(today=TODAY)], storage, storage.start_run(TODAY), TODAY,
+                           base_delay=0, verifier=Verifier(today=TODAY), verify_top_k=3)
+    assert engine2.run(cfg.trips)["T1"].verified == 3
+    assert storage.conn.execute("SELECT COUNT(*) FROM searches WHERE phase='verify'").fetchone()[0] == 3

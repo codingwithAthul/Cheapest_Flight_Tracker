@@ -47,6 +47,7 @@ class TripStats:
     skipped_cached: int = 0
     offers_found: int = 0
     offers_kept: int = 0
+    verified: int = 0
     rejected: dict[str, int] = field(default_factory=dict)
 
 
@@ -82,9 +83,12 @@ def _cache_key(q: SearchQuery) -> str:
 
 class SearchEngine:
     def __init__(self, config: Config, providers: list[Provider], storage: Storage, run_id: str, run_date: date,
-                 retries: int = 3, base_delay: float = 1.0):
+                 retries: int = 3, base_delay: float = 1.0, verifier: Optional[Provider] = None,
+                 verify_top_k: int = 0):
         self.config = config
         self.providers = providers
+        self.verifier = verifier
+        self.verify_top_k = verify_top_k
         self.storage = storage
         self.run_id = run_id
         self.run_date = run_date
@@ -92,11 +96,12 @@ class SearchEngine:
         self.base_delay = base_delay
 
     def _execute(self, trip: Trip, queries: list[SearchQuery], phase: str, stats: TripStats,
-                 pool: ThreadPoolExecutor) -> dict[str, tuple[SearchQuery, float]]:
+                 pool: ThreadPoolExecutor, providers: Optional[list[Provider]] = None,
+                 ) -> dict[str, tuple[SearchQuery, float]]:
         """Run queries on all providers; return cheapest filtered price per query key."""
         cheapest: dict[str, tuple[SearchQuery, float]] = {}
         futures = {}
-        for provider in self.providers:
+        for provider in providers or self.providers:
             done_today = self.storage.searched_keys_today(trip.name, provider.name, self.run_date)
             for q in queries:
                 stats.planned += 1
@@ -140,16 +145,29 @@ class SearchEngine:
         stats = TripStats()
         cur = self.config.currency
         if trip.strategy.mode == "exhaustive":
-            self._execute(trip, plan_exhaustive(trip, cur), "exhaustive", stats, pool)
-            return stats
-        phase1 = plan_sample(trip, cur)
-        cheapest = self._execute(trip, phase1, "sample", stats, pool)
-        remaining = trip.strategy.budget - len(phase1)
-        phase2 = plan_refine(trip, cur, cheapest, [q.key() for q in phase1], remaining)
-        if phase2:
-            self._execute(trip, phase2, "refine", stats, pool)
-        log.info("trip %s: %d sample + %d refine searches", trip.name, len(phase1), len(phase2))
+            cheapest = self._execute(trip, plan_exhaustive(trip, cur), "exhaustive", stats, pool)
+        else:
+            phase1 = plan_sample(trip, cur)
+            cheapest = self._execute(trip, phase1, "sample", stats, pool)
+            remaining = trip.strategy.budget - len(phase1)
+            phase2 = plan_refine(trip, cur, cheapest, [q.key() for q in phase1], remaining)
+            if phase2:
+                cheapest.update(self._execute(trip, phase2, "refine", stats, pool))
+            log.info("trip %s: %d sample + %d refine searches", trip.name, len(phase1), len(phase2))
+        self._verify(trip, cheapest, stats, pool)
         return stats
+
+    def _verify(self, trip: Trip, cheapest: dict[str, tuple[SearchQuery, float]], stats: TripStats,
+                pool: ThreadPoolExecutor) -> None:
+        """Final check: re-price the top-K cheapest combos on the verify provider (e.g. Google Flights)."""
+        if not self.verifier or not self.verify_top_k or not cheapest:
+            return
+        top = [q for q, _ in sorted(cheapest.values(), key=lambda qp: qp[1])[: self.verify_top_k]]
+        verify_stats = TripStats()
+        self._execute(trip, top, "verify", verify_stats, pool, providers=[self.verifier])
+        stats.verified = verify_stats.ok + verify_stats.skipped_cached
+        stats.failed += verify_stats.failed
+        log.info("trip %s: verified %d/%d combos on %s", trip.name, stats.verified, len(top), self.verifier.name)
 
     def run(self, trips: list[Trip]) -> dict[str, TripStats]:
         out: dict[str, TripStats] = {}
