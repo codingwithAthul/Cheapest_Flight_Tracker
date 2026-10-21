@@ -8,7 +8,7 @@ from typing import Optional
 
 from .config import Config, Trip
 from .models import Leg
-from .storage import Storage, row_legs
+from .storage import SANDBOX_SUFFIX, Storage, row_legs
 
 SPARK = "▁▂▃▄▅▆▇█"
 
@@ -37,6 +37,27 @@ class Option:
 
 
 @dataclass
+class Verification:
+    """One combo re-priced by the final-check provider."""
+
+    origin: str
+    destination: str
+    depart_date: date
+    return_date: Optional[date]
+    search_price: Optional[float]
+    search_providers: str
+    verify_price: Optional[float]
+    verify_provider: str
+    ok: bool
+
+    @property
+    def diff(self) -> Optional[float]:
+        if self.search_price is None or self.verify_price is None:
+            return None
+        return round(self.verify_price - self.search_price, 2)
+
+
+@dataclass
 class TripSummary:
     trip: Trip
     run_date: date
@@ -49,6 +70,9 @@ class TripSummary:
     history: list[tuple[str, float]] = field(default_factory=list)
     cheapest_dates: list[tuple[date, Optional[date], float]] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
+    verification: list["Verification"] = field(default_factory=list)
+    sandbox_providers: list[str] = field(default_factory=list)  # e.g. ["duffel-test"]
+    sandbox_excluded: bool = False  # sandbox fares were left out because real fares exist
 
     @property
     def change_pct(self) -> Optional[float]:
@@ -72,7 +96,19 @@ def _d(s: Optional[str]) -> Optional[date]:
 
 def build_summary(storage: Storage, trip: Trip, run_date: date, config: Config) -> TripSummary:
     s = TripSummary(trip=trip, run_date=run_date)
-    rows = storage.offers_for(trip.name, run_date)
+    s.verification = [
+        Verification(origin=v["origin"], destination=v["destination"], depart_date=_d(v["depart_date"]),
+                     return_date=_d(v["return_date"]), search_price=v["search_price"],
+                     search_providers=v["search_providers"] or "", verify_price=v["verify_price"],
+                     verify_provider=v["verify_provider"], ok=v["status"] == "ok")
+        for v in storage.verify_results(trip.name, run_date)
+    ]
+    all_rows = storage.offers_for(trip.name, run_date)
+    s.sandbox_providers = sorted({r["provider"] for r in all_rows if r["provider"].endswith(SANDBOX_SUFFIX)})
+    # Synthetic sandbox fares must never outrank real ones: when any real fare exists, rank real fares only.
+    real = bool(s.sandbox_providers) and any(not r["provider"].endswith(SANDBOX_SUFFIX) for r in all_rows)
+    s.sandbox_excluded = real
+    rows = storage.offers_for(trip.name, run_date, real_only=real)
     if not rows:
         s.prev_date = storage.previous_run_date(trip.name, run_date)
         return s
@@ -87,7 +123,7 @@ def build_summary(storage: Storage, trip: Trip, run_date: date, config: Config) 
             by_fp[fp]["providers"].append(r["provider"])
     unique = list(by_fp.values())
 
-    s.prev_date = storage.previous_run_date(trip.name, run_date)
+    s.prev_date = storage.previous_run_date(trip.name, run_date, real_only=real)
 
     def to_option(rank: int, item: dict) -> Option:
         r = item["row"]
@@ -100,7 +136,7 @@ def build_summary(storage: Storage, trip: Trip, run_date: date, config: Config) 
         )
         if s.prev_date:
             prev = storage.combo_price(trip.name, r["origin"], r["destination"], r["depart_date"],
-                                       r["return_date"], s.prev_date)
+                                       r["return_date"], s.prev_date, real_only=real)
             if prev is not None:
                 opt.change_vs_prev = round(r["price"] - prev, 2)
         return opt
@@ -116,11 +152,11 @@ def build_summary(storage: Storage, trip: Trip, run_date: date, config: Config) 
             s.best_value = to_option(0, best)
 
     if s.prev_date:
-        prev_rows = storage.offers_for(trip.name, date.fromisoformat(s.prev_date))
+        prev_rows = storage.offers_for(trip.name, date.fromisoformat(s.prev_date), real_only=real)
         s.prev_min = prev_rows[0]["price"] if prev_rows else None
-    atl = storage.all_time_low(trip.name, before=run_date)
+    atl = storage.all_time_low(trip.name, before=run_date, real_only=real)
     s.all_time_low_before = atl["price"] if atl else None
-    s.history = storage.daily_minimums(trip.name, limit_days=30)
+    s.history = storage.daily_minimums(trip.name, limit_days=30, real_only=real)
 
     # Cheapest per departure date, then the best few dates overall.
     per_date: dict[tuple, float] = {}

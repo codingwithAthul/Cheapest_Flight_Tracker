@@ -153,3 +153,26 @@ def test_verify_stage_rechecks_top_combos(cfg, storage):
                            base_delay=0, verifier=Verifier(today=TODAY), verify_top_k=3)
     assert engine2.run(cfg.trips)["T1"].verified == 3
     assert storage.conn.execute("SELECT COUNT(*) FROM searches WHERE phase='verify'").fetchone()[0] == 3
+
+
+class Sandbox(MockProvider):
+    name = "duffel-test"
+
+
+def test_sandbox_fares_never_outrank_real_ones_and_verification_is_reported(cfg, storage):
+    run_id = storage.start_run(TODAY)
+    engine = SearchEngine(cfg, [Sandbox(today=TODAY)], storage, run_id, TODAY, base_delay=0,
+                          verifier=Verifier(today=TODAY), verify_top_k=3)
+    engine.run(cfg.trips)
+    s = build_all(storage, cfg, TODAY)[0]
+    assert s.sandbox_providers == ["duffel-test"] and s.sandbox_excluded
+    assert s.options and all(p == "verifier" for o in s.options for p in o.providers)
+    assert len(s.verification) == 3 and all(v.ok and v.search_price and v.verify_price for v in s.verification)
+    assert all(v.search_providers == "duffel-test" for v in s.verification)
+
+
+def test_sandbox_only_is_still_reported(cfg, storage):
+    run_id = storage.start_run(TODAY)
+    SearchEngine(cfg, [Sandbox(today=TODAY)], storage, run_id, TODAY, base_delay=0).run(cfg.trips)
+    s = build_all(storage, cfg, TODAY)[0]
+    assert s.options and not s.sandbox_excluded and s.sandbox_providers == ["duffel-test"]
