@@ -151,7 +151,7 @@ def cmd_report(cfg: Config, args, storage: Storage, run_date: date) -> int:
     errors = storage.search_errors(run_date)
     md = render_markdown(summaries, run_date, stats, errors)
     html_body = render_html(summaries, run_date, stats)
-    paths = write_report_files(args.output_dir or cfg.report.output_dir, run_date, md, html_body)
+    paths = write_report_files(args.output_dir or cfg.report.output_dir, run_date, summaries)
     log.info("report written: %s", ", ".join(map(str, paths)))
 
     cheapest = [s for s in summaries if s.today_min is not None]

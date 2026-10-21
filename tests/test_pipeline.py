@@ -112,7 +112,8 @@ def test_cli_shards_merge_report_prune(tmp_path):
     st.close()
     out = tmp_path / "reports"
     assert main(common + ["--db", main_db, "report", "--output-dir", str(out)]) == 0
-    assert (out / "latest.md").exists() and (out / f"{d}.html").exists()
+    assert (out / "T1 YYZ - LHR+LGW (Round)" / "latest.md").exists()
+    assert (out / "T2 YYZ - LHR+LGW (One-Way)" / f"{d}.html").exists()
     # merging twice is idempotent
     main(common + ["--db", main_db, "merge", str(tmp_path / "s1.db")])
     assert main(["--date", "2027-06-01", "--db", main_db, "prune", "--keep-days", "30"]) == 0

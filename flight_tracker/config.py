@@ -109,7 +109,7 @@ class NotifierConfig:
 @dataclass
 class ReportConfig:
     top_n: int = 15
-    output_dir: str = "reports"
+    output_dir: str = "Report"  # one sub-folder per trip, named by Trip.report_folder
     value_of_hour: float = 0.0  # 0 disables the "best value" pick
     drop_alert_percent: float = 5.0
 

@@ -258,11 +258,16 @@ def render_telegram(summaries: list[TripSummary], run_date: date, top: int = 5) 
     return msgs
 
 
-def write_report_files(output_dir: str | Path, run_date: date, markdown: str, html_body: str) -> list[Path]:
-    d = Path(output_dir)
-    d.mkdir(parents=True, exist_ok=True)
-    paths = [d / f"{run_date.isoformat()}.md", d / f"{run_date.isoformat()}.html", d / "latest.md"]
-    paths[0].write_text(markdown)
-    paths[1].write_text(html_body)
-    paths[2].write_text(markdown)
+def write_report_files(output_dir: str | Path, run_date: date, summaries: list[TripSummary]) -> list[Path]:
+    """Write one folder per trip: <output_dir>/<trip.report_folder>/{YYYY-MM-DD.md, YYYY-MM-DD.html, latest.md}."""
+    paths = []
+    for s in summaries:
+        d = Path(output_dir) / s.trip.report_folder
+        d.mkdir(parents=True, exist_ok=True)
+        md = render_markdown([s], run_date)
+        for name, body in ((f"{run_date.isoformat()}.md", md),
+                           (f"{run_date.isoformat()}.html", render_html([s], run_date)),
+                           ("latest.md", md)):
+            (d / name).write_text(body)
+            paths.append(d / name)
     return paths

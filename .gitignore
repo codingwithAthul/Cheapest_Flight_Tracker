@@ -5,5 +5,5 @@ __pycache__/
 .env
 # Local runtime output; the daily workflow stores these on the `data` branch.
 data/
-reports/
+Report/
 shards/
