@@ -74,12 +74,28 @@ def build_providers(cfg: Config, override: Optional[str], run_date: date) -> lis
     return ready
 
 
+def build_verifier(cfg: Config, args, run_date: date) -> Optional[Provider]:
+    """The final-check provider, or None when disabled, overridden or missing its key."""
+    if not cfg.verify or args.no_verify or args.provider:
+        return None
+    opts = dict(cfg.verify.options)
+    if cfg.verify.provider == "mock":
+        opts.setdefault("today", run_date)
+    p = create_provider(cfg.verify.provider, **opts)
+    try:
+        p.check_ready()
+    except ProviderError as e:
+        log.error("verify stage disabled: %s", e)
+        return None
+    return p
+
+
 # ---------------------------------------------------------------- commands
 
 
 def cmd_plan(cfg: Config, args) -> int:
     n_providers = len(args.provider.split(",")) if args.provider else len(cfg.providers)
-    total = 0
+    total = verify_calls = 0
     for t in select_trips(cfg, parse_shard(args.shard), args.trip):
         combos = len(all_combinations(t, cfg.currency))
         if t.strategy.mode == "exhaustive":
@@ -96,7 +112,11 @@ def cmd_plan(cfg: Config, args) -> int:
         total += calls
         print(f"- {t.name}: {combos} possible date/airport combinations; {desc}; "
               f"≈{calls} API calls/day across {n_providers} provider(s)")
-    print(f"Total ≈{total} API calls per day (≈{total * 30} per month).")
+        if cfg.verify and not args.provider:
+            verify_calls += cfg.verify.top_k
+    print(f"Total ≈{total} search calls per day (≈{total * 30} per month).")
+    if verify_calls:
+        print(f"Final check on {cfg.verify.provider}: ≈{verify_calls} calls per day (≈{verify_calls * 30} per month).")
     return 0
 
 
@@ -108,7 +128,9 @@ def cmd_search(cfg: Config, args, storage: Storage, run_date: date) -> int:
         return 0
     providers = build_providers(cfg, args.provider, run_date)
     run_id = storage.start_run(run_date, args.shard)
-    engine = SearchEngine(cfg, providers, storage, run_id, run_date, retries=args.retries)
+    verifier = build_verifier(cfg, args, run_date)
+    engine = SearchEngine(cfg, providers, storage, run_id, run_date, retries=args.retries,
+                          verifier=verifier, verify_top_k=cfg.verify.top_k if verifier else 0)
     stats = engine.run(trips)
     planned = sum(s.planned for s in stats.values())
     ok = sum(s.ok + s.skipped_cached for s in stats.values())
@@ -117,7 +139,7 @@ def cmd_search(cfg: Config, args, storage: Storage, run_date: date) -> int:
                       for k, v in stats.items())
     storage.finish_run(run_id, planned, ok, failed, notes)
     for name, s in stats.items():
-        print(f"[{name}] searches ok={s.ok} cached={s.skipped_cached} failed={s.failed} "
+        print(f"[{name}] searches ok={s.ok} cached={s.skipped_cached} failed={s.failed} verified={s.verified} "
               f"offers kept {s.offers_kept}/{s.offers_found} rejected={s.rejected}")
     return 1 if planned and ok == 0 else 0
 
@@ -194,6 +216,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             p.add_argument("--shard", help="i/n: only run trips where index %% n == i-1")
             p.add_argument("--provider", help="comma-separated override, e.g. 'mock'")
             p.add_argument("--retries", type=int, default=3)
+            p.add_argument("--no-verify", action="store_true", help="skip the final-check provider")
         if report:
             p.add_argument("--no-notify", action="store_true", help="print the report instead of sending")
             p.add_argument("--output-dir")
