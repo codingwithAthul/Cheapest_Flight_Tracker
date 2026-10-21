@@ -95,6 +95,13 @@ def _id() -> str:
     return uuid.uuid4().hex
 
 
+SANDBOX_SUFFIX = "-test"  # providers tagged like "duffel-test" return synthetic, not real, fares
+
+
+def _real(real_only: bool) -> str:
+    return f"AND provider NOT LIKE '%{SANDBOX_SUFFIX}'" if real_only else ""
+
+
 class Storage:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -220,42 +227,63 @@ class Storage:
 
     # ------------------------------------------------------------ reads
 
-    def offers_for(self, trip_name: str, run_date: date) -> list[sqlite3.Row]:
+    def offers_for(self, trip_name: str, run_date: date, real_only: bool = False) -> list[sqlite3.Row]:
         return self.conn.execute(
-            "SELECT * FROM offers WHERE trip_name=? AND run_date=? ORDER BY price",
+            f"SELECT * FROM offers WHERE trip_name=? AND run_date=? {_real(real_only)} ORDER BY price",
             (trip_name, run_date.isoformat()),
         ).fetchall()
 
-    def daily_minimums(self, trip_name: str, limit_days: int = 60) -> list[tuple[str, float]]:
+    def daily_minimums(self, trip_name: str, limit_days: int = 60, real_only: bool = False) -> list[tuple[str, float]]:
         rows = self.conn.execute(
-            """SELECT run_date, MIN(price) AS p FROM offers WHERE trip_name=?
+            f"""SELECT run_date, MIN(price) AS p FROM offers WHERE trip_name=? {_real(real_only)}
                GROUP BY run_date ORDER BY run_date DESC LIMIT ?""",
             (trip_name, limit_days),
         ).fetchall()
         return [(r["run_date"], r["p"]) for r in reversed(rows)]
 
-    def all_time_low(self, trip_name: str, before: Optional[date] = None) -> Optional[sqlite3.Row]:
-        sql = "SELECT * FROM offers WHERE trip_name=?"
+    def all_time_low(self, trip_name: str, before: Optional[date] = None, real_only: bool = False) -> Optional[sqlite3.Row]:
+        sql = f"SELECT * FROM offers WHERE trip_name=? {_real(real_only)}"
         args: list = [trip_name]
         if before:
             sql += " AND run_date < ?"
             args.append(before.isoformat())
         return self.conn.execute(sql + " ORDER BY price LIMIT 1", args).fetchone()
 
-    def previous_run_date(self, trip_name: str, run_date: date) -> Optional[str]:
+    def previous_run_date(self, trip_name: str, run_date: date, real_only: bool = False) -> Optional[str]:
         row = self.conn.execute(
-            "SELECT MAX(run_date) FROM offers WHERE trip_name=? AND run_date < ?",
+            f"SELECT MAX(run_date) FROM offers WHERE trip_name=? AND run_date < ? {_real(real_only)}",
             (trip_name, run_date.isoformat()),
         ).fetchone()
         return row[0] if row else None
 
-    def combo_price(self, trip_name: str, origin: str, dest: str, depart: str, ret: Optional[str], run_date: str) -> Optional[float]:
+    def combo_price(self, trip_name: str, origin: str, dest: str, depart: str, ret: Optional[str], run_date: str,
+                    real_only: bool = False) -> Optional[float]:
         row = self.conn.execute(
-            """SELECT MIN(price) FROM offers WHERE trip_name=? AND origin=? AND destination=? AND depart_date=?
-               AND COALESCE(return_date,'')=COALESCE(?, '') AND run_date=?""",
+            f"""SELECT MIN(price) FROM offers WHERE trip_name=? AND origin=? AND destination=? AND depart_date=?
+               AND COALESCE(return_date,'')=COALESCE(?, '') AND run_date=? {_real(real_only)}""",
             (trip_name, origin, dest, depart, ret, run_date),
         ).fetchone()
         return row[0] if row else None
+
+    def verify_results(self, trip_name: str, run_date: date) -> list[sqlite3.Row]:
+        """Each combo re-checked by the verify provider today, with the search providers' best price for it."""
+        return self.conn.execute(
+            """SELECT v.origin, v.destination, v.depart_date, v.return_date, v.provider AS verify_provider,
+                      MIN(v.min_price) AS verify_price, MAX(v.status) AS status,
+                      (SELECT MIN(o.price) FROM offers o JOIN searches s2 ON s2.id = o.search_id
+                        WHERE s2.phase != 'verify' AND o.trip_name = v.trip_name AND o.run_date = r.run_date
+                          AND o.origin = v.origin AND o.destination = v.destination AND o.depart_date = v.depart_date
+                          AND COALESCE(o.return_date,'') = COALESCE(v.return_date,'')) AS search_price,
+                      (SELECT GROUP_CONCAT(DISTINCT o.provider) FROM offers o JOIN searches s2 ON s2.id = o.search_id
+                        WHERE s2.phase != 'verify' AND o.trip_name = v.trip_name AND o.run_date = r.run_date
+                          AND o.origin = v.origin AND o.destination = v.destination AND o.depart_date = v.depart_date
+                          AND COALESCE(o.return_date,'') = COALESCE(v.return_date,'')) AS search_providers
+               FROM searches v JOIN runs r ON r.id = v.run_id
+               WHERE v.phase = 'verify' AND v.trip_name = ? AND r.run_date = ?
+               GROUP BY v.origin, v.destination, v.depart_date, v.return_date, v.provider
+               ORDER BY COALESCE(MIN(v.min_price), search_price)""",
+            (trip_name, run_date.isoformat()),
+        ).fetchall()
 
     def run_stats(self, run_date: date) -> dict:
         row = self.conn.execute(
