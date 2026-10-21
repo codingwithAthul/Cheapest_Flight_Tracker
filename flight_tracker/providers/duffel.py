@@ -7,6 +7,7 @@ token returns real airline offers.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import datetime
@@ -15,6 +16,8 @@ import requests
 
 from ..models import FlightOffer, Leg, SearchQuery, Segment
 from .base import Provider, ProviderError, TransientProviderError
+
+log = logging.getLogger(__name__)
 
 ENDPOINT = "https://api.duffel.com/air/offer_requests"
 ISO_DURATION = re.compile(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?")
@@ -40,10 +43,16 @@ class DuffelProvider(Provider):
         self.token = os.environ.get(options.get("token_env", "DUFFEL_ACCESS_TOKEN"), "")
         self.timeout = float(options.get("timeout", 90))
         self.session = requests.Session()
+        # Test tokens only return synthetic sandbox offers ("Duffel Airways"), never real fares.
+        # Tag them so reports can say so instead of passing fake prices off as real.
+        self.sandbox = self.token.startswith("duffel_test_")
+        self.label = "duffel-test" if self.sandbox else self.name
 
     def check_ready(self) -> None:
         if not self.token:
             raise ProviderError("duffel: DUFFEL_ACCESS_TOKEN is not set")
+        if self.sandbox:
+            log.warning("duffel: test token in use; results are sandbox data, not real prices")
 
     def build_body(self, q: SearchQuery) -> dict:
         slices = [{"origin": q.origin, "destination": q.destination, "departure_date": q.depart_date.isoformat()}]
@@ -100,7 +109,7 @@ class DuffelProvider(Provider):
             if not legs:
                 continue
             offers.append(FlightOffer(
-                provider=self.name,
+                provider=self.label,
                 query=query,
                 price=float(o["total_amount"]),
                 currency=o.get("total_currency", query.currency),

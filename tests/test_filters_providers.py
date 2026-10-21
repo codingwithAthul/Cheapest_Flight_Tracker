@@ -105,3 +105,11 @@ def test_duffel_body_and_parse():
         ]}]}}
     o = p.parse(Q, payload)[0]
     assert o.price == 455.10 and o.inbound is not None and o.total_duration_minutes == 900
+
+
+def test_duffel_test_token_is_tagged_as_sandbox(monkeypatch):
+    monkeypatch.setenv("DUFFEL_ACCESS_TOKEN", "duffel_test_abc")
+    p = DuffelProvider()
+    assert p.sandbox and p.label == "duffel-test"
+    monkeypatch.setenv("DUFFEL_ACCESS_TOKEN", "duffel_live_abc")
+    assert not DuffelProvider().sandbox
