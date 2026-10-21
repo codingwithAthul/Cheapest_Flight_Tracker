@@ -14,6 +14,9 @@ searches their unsearched neighbours (+/- radius days on departure and on
 stay length), closest first, until the budget runs out. Fares cluster by
 date, so this finds the true minimum far more often than random sampling.
 
+With `rotate_daily`, the phase-1 grid shifts by one step each day, so even a
+tiny budget covers the whole window within a few days.
+
 `exhaustive` mode skips the phases and searches every combination. When
 there are more combinations than the budget allows, it searches an evenly
 spaced subset instead.
@@ -88,8 +91,12 @@ def plan_exhaustive(trip: Trip, currency: str) -> list[SearchQuery]:
     return _spread(combos, trip.strategy.budget)
 
 
-def plan_sample(trip: Trip, currency: str) -> list[SearchQuery]:
-    """Phase 1 coarse grid that fits within PHASE1_SHARE of the budget."""
+def plan_sample(trip: Trip, currency: str, rotation: int = 0) -> list[SearchQuery]:
+    """Phase 1 coarse grid that fits within PHASE1_SHARE of the budget.
+
+    `rotation` (e.g. the run date's ordinal) shifts the grid each day, so a small daily budget
+    still covers every departure date and stay length over a few days instead of re-checking the same ones.
+    """
     s = trip.strategy
     pairs = _pairs(trip)
     days = _depart_days(trip)
@@ -101,14 +108,16 @@ def plan_sample(trip: Trip, currency: str) -> list[SearchQuery]:
     n_nights = min(s.nights_samples, len(nights_all))
     every = s.sample_every_days
     while True:
-        sampled_days = days[::every]
-        if days[-1] not in sampled_days:
+        sampled_days = days[rotation % every::every] if rotation else days[::every]
+        if not rotation and days[-1] not in sampled_days:
             sampled_days.append(days[-1])
-        size = len(pairs) * len(sampled_days) * n_nights
+        # With rotation, size the grid by its largest possible slice so the step is the same every day.
+        n_days = math.ceil(len(days) / every) if rotation else len(sampled_days)
+        size = len(pairs) * n_days * n_nights
         if size <= allowance:
             break
         # Shrink stay-length samples first (fares vary less by stay than by date), then widen date step.
-        if n_nights > 1 and len(pairs) * len(sampled_days) * (n_nights - 1) >= allowance * 0.5:
+        if n_nights > 1 and len(pairs) * n_days * (n_nights - 1) >= allowance * 0.5:
             n_nights -= 1
         elif every < len(days):
             every += 1
@@ -120,6 +129,10 @@ def plan_sample(trip: Trip, currency: str) -> list[SearchQuery]:
             sampled_days = [days[len(days) // 2]]
             break
     nights = _spread(nights_all, n_nights)
+    if rotation and n_nights < len(nights_all):
+        windows = max(1, len(nights_all) - n_nights + 1)
+        offset = (rotation // every) % windows
+        nights = _spread(nights_all[offset:offset + max(n_nights, len(nights_all) - windows + 1)], n_nights)
     return [
         _query(trip, o, d, dep, n, currency)
         for (o, d) in pairs

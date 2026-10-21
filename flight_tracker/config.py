@@ -62,6 +62,7 @@ class Strategy:
     refine_top_k: int = 5
     refine_radius_days: int = 2
     keep_offers_per_search: int = 5  # how many cheapest offers to store per search
+    rotate_daily: bool = False  # shift the sample grid each day (good for small budgets)
 
 
 @dataclass

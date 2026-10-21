@@ -147,7 +147,7 @@ class SearchEngine:
         if trip.strategy.mode == "exhaustive":
             cheapest = self._execute(trip, plan_exhaustive(trip, cur), "exhaustive", stats, pool)
         else:
-            phase1 = plan_sample(trip, cur)
+            phase1 = plan_sample(trip, cur, self.run_date.toordinal() if trip.strategy.rotate_daily else 0)
             cheapest = self._execute(trip, phase1, "sample", stats, pool)
             remaining = trip.strategy.budget - len(phase1)
             phase2 = plan_refine(trip, cur, cheapest, [q.key() for q in phase1], remaining)

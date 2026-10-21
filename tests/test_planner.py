@@ -63,3 +63,16 @@ def test_one_way_and_weekdays():
     assert all(q.return_date is None for q in qs)
     assert all(q.depart_date.weekday() in (1, 2) for q in qs)
     assert all(q.return_date is None or q.return_date - q.depart_date >= timedelta(0) for q in qs)
+
+
+def test_rotation_covers_whole_window_over_days():
+    cfg = parse_config(base_raw(strategy={"budget": 8, "rotate_daily": True}), today=TODAY)
+    t = cfg.trips[0]
+    seen_days, seen_nights = set(), set()
+    for day in range(1, 200):
+        qs = plan_sample(t, "USD", rotation=day)
+        assert 0 < len(qs) <= 8 * PHASE1_SHARE
+        seen_days |= {q.depart_date for q in qs}
+        seen_nights |= {q.nights for q in qs}
+    assert seen_days == set(t.depart_window.days())
+    assert seen_nights == set(range(t.nights_min, t.nights_max + 1))
