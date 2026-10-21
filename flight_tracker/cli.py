@@ -204,6 +204,13 @@ def cmd_probe(cfg: Config, args, run_date: date) -> int:
             failures += 1
             print(f"  {name}: FAILED: {e}")
             continue
+        if hasattr(p, "account"):
+            try:
+                acct = p.account()
+                print(f"  {name}: plan {acct['plan_name']}, {acct['plan_searches_left']} of "
+                      f"{acct['searches_per_month']} searches left this month")
+            except ProviderError as e:
+                print(f"  {name}: could not read plan quota: {e}")
         sandbox = " (TEST key: sandbox data, not real fares)" if getattr(p, "sandbox", False) else ""
         if offers:
             cheapest = min(offers, key=lambda o: o.price)

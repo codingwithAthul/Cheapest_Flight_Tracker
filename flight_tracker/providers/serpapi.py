@@ -20,6 +20,7 @@ from ..models import FlightOffer, Leg, SearchQuery, Segment
 from .base import Provider, ProviderError, TransientProviderError
 
 ENDPOINT = "https://serpapi.com/search.json"
+ACCOUNT_ENDPOINT = "https://serpapi.com/account.json"
 TRAVEL_CLASS = {"economy": 1, "premium_economy": 2, "business": 3, "first": 4}
 NO_RESULTS_HINTS = ("hasn't returned any results", "no results")
 
@@ -51,6 +52,17 @@ class SerpApiProvider(Provider):
     def check_ready(self) -> None:
         if not self.api_key:
             raise ProviderError("serpapi: SERPAPI_API_KEY is not set")
+
+    def account(self) -> dict:
+        """Plan and remaining searches (SerpApi's account endpoint is free and doesn't use a search)."""
+        try:
+            resp = self.session.get(ACCOUNT_ENDPOINT, params={"api_key": self.api_key}, timeout=self.timeout)
+            data = resp.json()
+        except (requests.RequestException, ValueError) as e:
+            raise TransientProviderError(f"serpapi: account check failed: {e}") from e
+        if data.get("error"):
+            raise ProviderError(f"serpapi: {data['error']}")
+        return {k: data.get(k) for k in ("plan_name", "searches_per_month", "plan_searches_left", "this_month_usage")}
 
     def build_params(self, q: SearchQuery) -> dict:
         params = {
