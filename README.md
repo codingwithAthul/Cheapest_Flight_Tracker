@@ -40,8 +40,11 @@ python -m pytest -q
    [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 2. **Pick a data source** and add its key as a repo secret (*Settings →
    Secrets and variables → Actions*). See [docs/PROVIDERS.md](docs/PROVIDERS.md).
-   - `serpapi` (Google Flights, recommended) needs `SERPAPI_API_KEY`
-   - `duffel` needs `DUFFEL_ACCESS_TOKEN`
+   - Default setup: `duffel` searches the window (`DUFFEL_ACCESS_TOKEN`) and
+     `serpapi` re-prices the cheapest dates on Google Flights
+     (`SERPAPI_API_KEY`).
+   - A `duffel_test_` token gives sandbox fares only. Use a live token for
+     real prices.
 3. **Pick where the report goes** and add its secrets:
    - Telegram needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
    - Email needs `SMTP_USERNAME`, `SMTP_PASSWORD` (a Gmail App Password) and
@@ -62,6 +65,7 @@ branch, so `main` stays clean.
 | `search --shard i/n` | Searches one shard of the trips (used by parallel jobs) |
 | `merge A.db B.db` | Merges shard databases into the main database |
 | `report [--no-notify]` | Builds and sends the report for `--date` (default today) |
+| `probe` | One live search per provider, to check the API keys |
 | `history [--trip NAME]` | Daily cheapest fare per trip |
 | `prune --keep-days N` | Deletes old offers but keeps each day's cheapest forever |
 

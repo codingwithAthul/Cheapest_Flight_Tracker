@@ -13,6 +13,7 @@ rejected, so typos fail loudly. Check your config at any time with
 | `database` | `data/tracker.db` | SQLite path (the workflow overrides it with `--db`) |
 | `providers` | `[mock]` | List of `{name, ...options}`. See [PROVIDERS.md](PROVIDERS.md) |
 | `notifiers` | `[console]` | List of `{type, ...options}`. See below |
+| `verify` | off | Final check on a second provider. See below |
 | `report` | | See below |
 | `trips` | **required** | One or more trips |
 
@@ -61,6 +62,21 @@ rejected, so typos fail loudly. Check your config at any time with
 
 **Cost:** daily API calls ≈ Σ `budget` × number of providers. Monthly ≈ ×30.
 `plan` prints both.
+
+## `verify` (optional final check)
+
+After the search providers finish a trip, the `top_k` cheapest airport/date
+combos are re-priced on this provider. The report shows a "Final check"
+table comparing each search price with the verified price.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider` | **required** | e.g. `serpapi` |
+| `top_k` | `5` | Combos re-checked per trip per day (= extra API calls) |
+| `enabled` | `true` | `false` turns it off without deleting the block |
+| `options` | | Provider options, same as under `providers` |
+
+It is skipped when you pass `--provider` (e.g. free `mock` test runs) or `--no-verify`.
 
 ## `report`
 

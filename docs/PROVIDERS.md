@@ -10,6 +10,28 @@ the cheapest copy along with every provider that sold it.
 | SerpApi Google Flights | `serpapi` | `SERPAPI_API_KEY` | Everything on Google Flights, including most low-cost carriers | Small free tier, then paid monthly plans by searches/month | **Recommended.** Round trips return the total price and outbound details only; return details are on the linked Google Flights page. |
 | Duffel | `duffel` | `DUFFEL_ACCESS_TOKEN` | Airlines connected to Duffel (NDC/GDS); weaker on some low-cost carriers | Searching is free with an account; Duffel charges on bookings | A test token gives sandbox data only. A live token may need business verification. |
 
+## Recommended setup: Duffel search + SerpApi final check
+
+```yaml
+providers: [{name: duffel}]
+verify: {provider: serpapi, top_k: 5}
+```
+
+Duffel searches the whole date window for free. SerpApi then re-prices only
+the 5 cheapest combos on Google Flights, which costs 5 credits per trip per
+day. That way the broad search is free and the paid source is only used
+where it matters.
+
+**Duffel test tokens (`duffel_test_…`) return sandbox data**, such as
+"Duffel Airways", not real fares. The bot detects this and tags those offers
+as `duffel-test`. The report then:
+- shows a warning;
+- leaves sandbox fares out of the ranking whenever real (verified) fares
+  exist;
+- still lets the sandbox results pick which dates get verified. With a test
+  token that choice is essentially random, so get a **live** Duffel token
+  for the search stage to mean anything.
+
 ### Not supported, and why
 
 - **Amadeus Self-Service APIs** were shut down in July 2026.

@@ -15,6 +15,15 @@
   `if: always()`). Failed searches are listed at the bottom of the report.
   The job goes red if every search failed or a notifier failed.
 
+## Checking your API keys
+
+- Locally: `python -m flight_tracker probe` runs one real search per
+  configured provider (and the verify provider) and prints OK/FAILED, the
+  offer count and the cheapest fare. It also flags Duffel test keys.
+- In GitHub: the `live-keys` job in `ci.yml` runs the same probe on every
+  push and PR once the secrets exist (1 SerpApi credit each time). Its output
+  appears in the job summary.
+
 ## Secrets
 
 *Settings → Secrets and variables → Actions → New repository secret.* You
