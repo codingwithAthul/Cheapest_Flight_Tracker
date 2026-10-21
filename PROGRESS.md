@@ -5,7 +5,7 @@
 
 _Last updated: 2026-10-21_
 
-## Status: v0.2 (Duffel search + SerpApi final check), waiting on secrets and route
+## Status: v0.3 — T1 Vancouver ⇄ Kochi live on SerpApi (SERPAPI_API_KEY secret set by Athul)
 
 The full pipeline works end to end with the **mock** provider: plan →
 parallel search → filter → SQLite → insights → report → notify. That
@@ -33,23 +33,16 @@ need an API key. See "Waiting on owner" below.
 
 ## Waiting on owner (decisions only they can make)
 
-1. **Add the API keys as GitHub secrets.** Athul shared a Duffel key and a
-   SerpApi key in chat on 2026-10-21. They must go into *Settings → Secrets and
-   variables → Actions* as `DUFFEL_ACCESS_TOKEN` and `SERPAPI_API_KEY`. The
-   build environment can't set repo secrets or reach either API, so the keys
-   are untested. Never commit keys to the repo.
-2. **Live Duffel token.** The shared key is `duffel_test_…`, which returns
-   sandbox fares only. The SerpApi final check is the only real pricing until
-   a live token is added.
-3. **Real route.** `config.yaml` still has the EXAMPLE route (YYZ → LHR/LGW).
-4. **Report channel.** Telegram is recommended, but nothing has been chosen yet.
+1. **Stay length and window.** T1 assumes a 14–35 night stay and departures 2 weeks to 6 months out. Athul hasn't confirmed this yet.
+2. **Report channel.** Reports are committed to `Report/` and shown in the Actions summary. Telegram or email isn't chosen yet.
+3. **Duffel.** Parked: Athul is unsure about the charges. Only the test key exists, and it isn't in secrets.
+4. **SerpApi plan size.** The budget of 8 searches/day assumes about 250/month. Check the `live-keys` CI output for the real quota, then retune `strategy.budget`.
 
 ## Next up (in order)
 
-1. Once the secrets exist, check the `live-keys` CI job output (it runs `probe`).
-2. Apply the route and channel to `config.yaml`, then run *Daily flight search* manually.
-3. Tune `strategy.budget` and `verify.top_k` to the SerpApi plan quota (`plan` shows calls per month).
-4. Roadmap items in PROJECT.md.
+1. Merge PR #1, then run *Actions → Daily flight search → Run workflow* once.
+2. Retune the budget to the real SerpApi quota.
+3. Roadmap items in PROJECT.md.
 
 ## How to resume quickly
 
@@ -64,3 +57,4 @@ python -m flight_tracker --db /tmp/t.db run --provider mock --no-notify
 
 - 2026-10-21: Built v0.1 from an empty repo (README + LICENSE only). Amadeus Self-Service was shut down in July 2026 and Kiwi Tequila is closed to new sign-ups, so they are not supported.
 - 2026-10-21: Athul chose Duffel for search with SerpApi as the final check, and set a rule: one commit per small chunk of code. Added the verify stage, sandbox handling, probe and the live-keys CI job.
+- 2026-10-21: Athul set the SERPAPI_API_KEY secret, parked Duffel, and gave the route Vancouver ⇄ Kochi (T1). Reports now go to `Report/<code> <from> - <to> (Round|One-Way)/` on main. Added rotate_daily and the 7-day best fares section.

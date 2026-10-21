@@ -53,8 +53,9 @@ python -m pytest -q
 4. **Run it once by hand.** Go to *Actions → Daily flight search → Run
    workflow*. After that it runs daily at 11:30 UTC.
 
-History (`tracker.db`) and every daily report are committed to the **`data`**
-branch, so `main` stays clean.
+Daily reports land in **`Report/`** on `main`, one folder per trip, e.g.
+`Report/T1 Vancouver - Kochi (Round)/2026-10-22.md` (plus `latest.md`).
+The history database (`tracker.db`) lives on the **`data`** branch.
 
 ## Commands
 

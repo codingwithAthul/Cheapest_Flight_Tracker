@@ -22,6 +22,8 @@ rejected, so typos fail loudly. Check your config at any time with
 | Key | Required | Meaning |
 |---|---|---|
 | `name` | | Unique label (defaults to `ORIGIN-DEST`) |
+| `code` | | Short unique ID, letters and digits only (defaults to `T1`, `T2`, … by position) |
+| `from_name` / `to_name` | | Place names for the report folder (default: the airport codes) |
 | `origin` | ✔ | IATA code or list, e.g. `[YYZ, YTZ]`. **Fixed.** |
 | `destination` | ✔ | IATA code or list. **Fixed.** |
 | `trip_type` | | `round_trip` (default) or `one_way` |
@@ -59,6 +61,7 @@ rejected, so typos fail loudly. Check your config at any time with
 | `refine_top_k` | `5` | Phase-2 seeds (the cheapest phase-1 combos) |
 | `refine_radius_days` | `2` | Phase-2 neighbourhood (± days on departure and stay length) |
 | `keep_offers_per_search` | `5` | Offers stored per search (DB size control) |
+| `rotate_daily` | `false` | Shift the phase-1 grid each day so a small budget covers every date and stay length over several days. The report's "Best fares seen in the last 7 days" keeps earlier finds visible. |
 
 **Cost:** daily API calls ≈ Σ `budget` × number of providers. Monthly ≈ ×30.
 `plan` prints both.
@@ -83,7 +86,7 @@ It is skipped when you pass `--provider` (e.g. free `mock` test runs) or `--no-v
 | Key | Default | Meaning |
 |---|---|---|
 | `top_n` | `15` | Options listed per trip |
-| `output_dir` | `reports` | Where `YYYY-MM-DD.md/.html` and `latest.md` go |
+| `output_dir` | `Report` | One folder per trip, named `<code> <from_name> - <to_name> (Round|One-Way)`, holding `YYYY-MM-DD.md/.html` and `latest.md` |
 | `value_of_hour` | `0` | If > 0, also show a "best value" pick that minimises `price + value_of_hour × hours` |
 | `drop_alert_percent` | `5` | Alert when the cheapest fare falls by at least this % since the last run |
 

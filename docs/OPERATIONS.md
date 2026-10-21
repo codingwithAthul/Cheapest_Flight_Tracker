@@ -6,7 +6,7 @@
 |---|---|
 | `plan` | Validates `config.yaml`, picks the shard count (one per enabled trip, capped at `MAX_SHARDS`), and prints the API cost |
 | `search` (matrix) | Each shard searches its trips into `shards/shard-i.db` and uploads it as an artifact |
-| `report` | Checks out the `data` branch, merges the shards into `tracker.db`, builds and sends the report, prunes offers older than 120 days, and commits to `data` |
+| `report` | Checks out the `data` branch, merges the shards into `tracker.db`, builds and sends the report, commits `Report/<trip folder>/` to `main`, prunes offers older than 120 days, and commits the DB to `data` |
 
 - **Schedule:** `30 11 * * *` (UTC). Edit the cron line to change it.
 - **Manual run:** *Actions → Daily flight search → Run workflow*. You can
@@ -44,7 +44,6 @@ The first run creates it automatically. It contains:
 
 - `tracker.db`: the full history (open it with any SQLite viewer, or with
   `sqlite3 tracker.db`)
-- `reports/YYYY-MM-DD.md` and `.html`, plus `reports/latest.md`
 
 To inspect it locally:
 
