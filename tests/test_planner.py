@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from flight_tracker.config import parse_config
 from flight_tracker.planner import PHASE1_SHARE, all_combinations, plan_exhaustive, plan_refine, plan_sample
@@ -76,3 +76,24 @@ def test_rotation_covers_whole_window_over_days():
         seen_nights |= {q.nights for q in qs}
     assert seen_days == set(t.depart_window.days())
     assert seen_nights == set(range(t.nights_min, t.nights_max + 1))
+
+
+def test_return_window_limits_every_plan():
+    cfg = parse_config(base_raw(depart_window={"start": "2026-11-23", "end": "2026-12-14"},
+                                return_window={"start": "2027-01-01", "end": "2027-01-14"},
+                                nights=None, strategy={"budget": 7, "rotate_daily": True}), today=TODAY)
+    t = cfg.trips[0]
+    assert (t.nights_min, t.nights_max) == (18, 52)
+    combos = all_combinations(t, "USD")
+    assert len(combos) == 22 * 14 * 2  # every departure day x every return day x 2 airport pairs
+    seen = set()
+    for day in range(1, 300):
+        qs = plan_sample(t, "USD", rotation=day)
+        assert qs and len(qs) <= 7
+        for q in qs:
+            assert date(2027, 1, 1) <= q.return_date <= date(2027, 1, 14)
+        seen |= {(q.depart_date, q.return_date) for q in qs}
+        cheap = {q.key(): (q, 100.0) for q in qs}
+        for r in plan_refine(t, "USD", cheap, list(cheap), 3):
+            assert date(2027, 1, 1) <= r.return_date <= date(2027, 1, 14)
+    assert len(seen) == 22 * 14  # rotation eventually tries every date pair

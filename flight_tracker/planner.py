@@ -55,6 +55,16 @@ def _nights_range(trip: Trip) -> list[Optional[int]]:
     return list(range(trip.nights_min, trip.nights_max + 1))
 
 
+def _stays(trip: Trip, dep: date) -> list[Optional[int]]:
+    """Valid stay lengths for a departure day: within [nights_min, nights_max] and, when the trip
+    has a return_window, only those that bring you back inside it."""
+    nights = _nights_range(trip)
+    rw = trip.return_window
+    if rw is None or not trip.is_round_trip:
+        return nights
+    return [n for n in nights if rw.start <= dep + timedelta(days=n) <= rw.end]
+
+
 def _depart_days(trip: Trip) -> list[date]:
     days = trip.depart_window.days()
     if trip.filters.allowed_weekdays:
@@ -82,7 +92,7 @@ def all_combinations(trip: Trip, currency: str) -> list[SearchQuery]:
         _query(trip, o, d, dep, n, currency)
         for (o, d) in _pairs(trip)
         for dep in _depart_days(trip)
-        for n in _nights_range(trip)
+        for n in _stays(trip, dep)
     ]
 
 
@@ -99,10 +109,10 @@ def plan_sample(trip: Trip, currency: str, rotation: int = 0) -> list[SearchQuer
     """
     s = trip.strategy
     pairs = _pairs(trip)
-    days = _depart_days(trip)
-    nights_all = _nights_range(trip)
+    days = [d for d in _depart_days(trip) if _stays(trip, d)]
     if not days:
         return []
+    nights_all = max((_stays(trip, d) for d in days), key=len)
     allowance = max(1, math.floor(s.budget * PHASE1_SHARE))
 
     n_nights = min(s.nights_samples, len(nights_all))
@@ -128,16 +138,17 @@ def plan_sample(trip: Trip, currency: str, rotation: int = 0) -> list[SearchQuer
             pairs = pairs[:allowance]
             sampled_days = [days[len(days) // 2]]
             break
-    nights = _spread(nights_all, n_nights)
-    if rotation and n_nights < len(nights_all):
-        windows = max(1, len(nights_all) - n_nights + 1)
-        offset = (rotation // every) % windows
-        nights = _spread(nights_all[offset:offset + max(n_nights, len(nights_all) - windows + 1)], n_nights)
+    def pick(stays: list) -> list:
+        if rotation and n_nights < len(stays):
+            offset = (rotation // every) % (len(stays) - n_nights + 1)
+            return stays[offset:offset + n_nights]
+        return _spread(stays, n_nights)
+
     return [
         _query(trip, o, d, dep, n, currency)
         for (o, d) in pairs
         for dep in sampled_days
-        for n in nights
+        for n in pick(_stays(trip, dep))
     ]
 
 
@@ -170,7 +181,7 @@ def plan_refine(
                 nights = None
                 if seed.is_round_trip:
                     nights = seed.nights + dn
-                    if not trip.nights_min <= nights <= trip.nights_max:
+                    if nights not in _stays(trip, dep):
                         continue
                 q = _query(trip, seed.origin, seed.destination, dep, nights, currency)
                 if q.key() in searched:
