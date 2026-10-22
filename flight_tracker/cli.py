@@ -75,6 +75,40 @@ def build_providers(cfg: Config, override: Optional[str], run_date: date) -> lis
     return ready
 
 
+def days_left_in_month(d: date) -> int:
+    nxt = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+    return (nxt - d).days  # including today
+
+
+def apply_auto_budgets(cfg: Config, providers: list[Provider], run_date: date) -> None:
+    """For trips with `budget: auto`, share the remaining monthly quota evenly over the days left.
+
+    Uses the first provider that reports a quota (SerpApi does, via its free account endpoint).
+    The quota is shared across all enabled auto trips, so parallel shards compute the same split.
+    """
+    auto = [t for t in cfg.trips if t.enabled and t.strategy.budget_auto]
+    if not auto:
+        return
+    left = None
+    for p in providers:
+        if hasattr(p, "account"):
+            try:
+                left = int(p.account()["plan_searches_left"])
+                break
+            except (ProviderError, TypeError, KeyError, ValueError) as e:
+                log.warning("auto budget: couldn't read %s quota (%s)", p.name, e)
+    if left is None:
+        log.warning("auto budget: no quota available, using each trip's fallback budget")
+        return
+    reserve = max(t.strategy.auto_reserve for t in auto)
+    per_day = max(0, left - reserve) // days_left_in_month(run_date)
+    share = per_day // len(auto)
+    for t in auto:
+        t.strategy.budget = max(1, share) if left > reserve else 0
+    log.info("auto budget: %d searches left, %d days left in month -> %d per trip today",
+             left, days_left_in_month(run_date), share)
+
+
 def build_verifier(cfg: Config, args, run_date: date) -> Optional[Provider]:
     """The final-check provider, or None when disabled, overridden or missing its key."""
     if not cfg.verify or args.no_verify or args.provider:
@@ -106,6 +140,8 @@ def cmd_plan(cfg: Config, args) -> int:
             p1 = plan_sample(t, cfg.currency)
             q = t.strategy.budget
             desc = f"smart: {len(p1)} sample searches + up to {max(q - len(p1), 0)} zoom searches"
+            if t.strategy.budget_auto:
+                desc += " (budget: auto — real number depends on the quota left; fallback shown)"
             if args.verbose:
                 for x in p1:
                     print(f"    {x.origin}->{x.destination} {x.depart_date} -> {x.return_date or '-'}")
@@ -128,6 +164,11 @@ def cmd_search(cfg: Config, args, storage: Storage, run_date: date) -> int:
         log.warning("no trips for this shard; nothing to do")
         return 0
     providers = build_providers(cfg, args.provider, run_date)
+    apply_auto_budgets(cfg, providers, run_date)
+    trips = [t for t in trips if t.strategy.budget > 0]
+    if not trips:
+        log.warning("monthly search quota used up (only the reserve is left); skipping today's search")
+        return 0
     run_id = storage.start_run(run_date, args.shard)
     verifier = build_verifier(cfg, args, run_date)
     engine = SearchEngine(cfg, providers, storage, run_id, run_date, retries=args.retries,

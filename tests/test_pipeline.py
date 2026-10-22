@@ -207,3 +207,30 @@ def test_recent_best_includes_earlier_days(cfg, storage):
     s = build_all(storage, cfg, day)[0]
     assert s.recent_best and [p for *_, p, _ in s.recent_best] == sorted(p for *_, p, _ in s.recent_best)
     assert all(dep > day for dep, *_ in s.recent_best)
+
+
+class Quota(MockProvider):
+    name = "quota"
+
+    def __init__(self, left, **kw):
+        super().__init__(**kw)
+        self.left = left
+
+    def account(self):
+        return {"plan_searches_left": self.left}
+
+
+def test_auto_budget_spreads_quota_over_month():
+    from flight_tracker.cli import apply_auto_budgets, days_left_in_month
+    raw = base_raw(strategy={"budget": "auto"})
+    raw["trips"].append(dict(raw["trips"][0], name="T2", code="T2"))
+    cfg = parse_config(raw, today=TODAY)
+    assert cfg.trips[0].strategy.budget_auto
+    assert days_left_in_month(date(2026, 10, 22)) == 10 and days_left_in_month(date(2026, 12, 31)) == 1
+    apply_auto_budgets(cfg, [Quota(210, today=TODAY)], date(2026, 10, 22))
+    assert [t.strategy.budget for t in cfg.trips] == [10, 10]  # (210 - 10 reserve) / 10 days / 2 trips
+    apply_auto_budgets(cfg, [Quota(5, today=TODAY)], date(2026, 10, 22))
+    assert [t.strategy.budget for t in cfg.trips] == [0, 0]  # only the reserve is left
+    cfg = parse_config(base_raw(strategy={"budget": "auto"}), today=TODAY)
+    apply_auto_budgets(cfg, [MockProvider(today=TODAY)], TODAY)  # no quota info: keep fallback
+    assert cfg.trips[0].strategy.budget == 7
