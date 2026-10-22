@@ -88,7 +88,12 @@ def verify_rows(s: TripSummary) -> list[tuple[str, str, str, str, str]]:
 
 def _trip_header(s: TripSummary) -> str:
     t = s.trip
-    kind = f"return, {t.nights_min}-{t.nights_max} nights" if t.is_round_trip else "one-way"
+    if t.return_window:
+        kind = f"return {t.return_window.start:%d %b} – {t.return_window.end:%d %b %Y}"
+    elif t.is_round_trip:
+        kind = f"return, {t.nights_min}-{t.nights_max} nights"
+    else:
+        kind = "one-way"
     return (f"{'/'.join(t.origins)} → {'/'.join(t.destinations)} · {kind} · "
             f"departing {t.depart_window.start:%d %b} – {t.depart_window.end:%d %b %Y} · "
             f"{t.adults} adult{'s' if t.adults > 1 else ''}, {t.cabin.replace('_', ' ')}")
