@@ -72,6 +72,7 @@ class Trip:
     destinations: list[str]
     trip_type: str
     depart_window: DateWindow
+    return_window: Optional[DateWindow] = None  # round trips: come back within these dates
     nights_min: int = 0
     nights_max: int = 0
     adults: int = 1
@@ -218,7 +219,7 @@ def _parse_strategy(raw: dict, where: str) -> Strategy:
 
 def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
     where = f"trips[{idx}]"
-    allowed = {"name", "origin", "destination", "trip_type", "depart_window", "nights", "adults",
+    allowed = {"name", "origin", "destination", "trip_type", "depart_window", "return_window", "nights", "adults",
                "cabin", "filters", "strategy", "target_price", "enabled", "code", "from_name", "to_name"}
     _known(raw, allowed, where)
     for req in ("origin", "destination", "depart_window"):
@@ -244,10 +245,24 @@ def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
         raise ConfigError(f"{where}.depart_window is entirely in the past")
 
     nights_min = nights_max = 0
+    return_window = None
+    if raw.get("return_window") is not None:
+        if trip_type != "round_trip":
+            raise ConfigError(f"{where}.return_window only applies to round_trip")
+        rw = raw["return_window"] or {}
+        return_window = DateWindow(_parse_date(rw.get("start"), f"{where}.return_window.start", today),
+                                   _parse_date(rw.get("end"), f"{where}.return_window.end", today))
+        if return_window.end < return_window.start:
+            raise ConfigError(f"{where}.return_window: end is before start")
+        if return_window.end <= start:
+            raise ConfigError(f"{where}.return_window ends before the earliest departure")
     if trip_type == "round_trip":
         nights = raw.get("nights")
+        if nights is None and return_window is not None:
+            # Any stay that fits both windows.
+            nights = {"min": max(1, (return_window.start - end).days), "max": (return_window.end - start).days}
         if nights is None:
-            raise ConfigError(f"{where}: round_trip needs 'nights: {{min: N, max: M}}'")
+            raise ConfigError(f"{where}: round_trip needs 'nights: {{min: N, max: M}}' or a return_window")
         if isinstance(nights, int):
             nights_min = nights_max = nights
         else:
@@ -277,6 +292,7 @@ def _parse_trip(raw: dict, idx: int, today: date) -> Trip:
         destinations=destinations,
         trip_type=trip_type,
         depart_window=DateWindow(start, end),
+        return_window=return_window,
         nights_min=nights_min,
         nights_max=nights_max,
         adults=adults,
