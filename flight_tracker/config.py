@@ -57,6 +57,8 @@ class Filters:
 class Strategy:
     mode: str = "smart"  # "smart" (sample then zoom) or "exhaustive"
     budget: int = 60  # max provider searches for this trip per run (per provider)
+    budget_auto: bool = False  # budget: auto -> spread the provider's remaining monthly quota over the days left
+    auto_reserve: int = 10  # searches kept back each month for manual runs and key checks
     sample_every_days: int = 3
     nights_samples: int = 3  # how many stay lengths to sample in phase 1
     refine_top_k: int = 5
@@ -208,8 +210,14 @@ def _parse_filters(raw: dict, where: str) -> Filters:
 
 def _parse_strategy(raw: dict, where: str) -> Strategy:
     raw = raw or {}
-    _known(raw, set(Strategy.__dataclass_fields__), where)
-    s = Strategy(**raw)
+    _known(raw, set(Strategy.__dataclass_fields__) - {"budget_auto"}, where)
+    raw = dict(raw)
+    auto = raw.get("budget") == "auto"
+    if auto:
+        raw["budget"] = 7  # fallback when the quota can't be read
+    s = Strategy(**raw, budget_auto=auto)
+    if not isinstance(s.budget, int):
+        raise ConfigError(f"{where}.budget must be a whole number or 'auto'")
     if s.mode not in {"smart", "exhaustive"}:
         raise ConfigError(f"{where}.mode must be 'smart' or 'exhaustive'")
     if s.budget < 1 or s.sample_every_days < 1 or s.nights_samples < 1:
