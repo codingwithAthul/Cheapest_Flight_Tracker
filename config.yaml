@@ -41,23 +41,22 @@ trips:
     origin: [YVR]
     destination: [COK]
     trip_type: round_trip
-    depart_window:
-      start: "+14d"               # from 2 weeks out...
-      end: "+180d"                # ...to about 6 months out (relative to each run)
-    nights: {min: 14, max: 35}    # ASSUMPTION: 2-5 week stay; change to your plans
+    depart_window:                # leave: last week of November or 1st/2nd week of December
+      start: 2026-11-23
+      end: 2026-12-14
+    return_window:                # come back: 1st or 2nd week of January
+      start: 2027-01-01
+      end: 2027-01-14
     adults: 1
     cabin: economy
     # target_price: 1400          # optional: alert when any round trip is at or below this (CAD)
-    filters:
-      max_stops: 2                # there are no nonstops on this route; 1-2 stops is normal
-      max_duration_hours: 40      # per direction, including layovers
-      min_layover_minutes: 60
-      max_layover_hours: 12
+    # No filters: any number of stops, any transit time or layover, any airline (Athul's call).
     strategy:
       mode: smart
-      budget: 7                   # SerpApi Free Plan = 250/month: 7 x 31 = 217, leaving ~30 for manual runs and probes
-      rotate_daily: true          # tiny budget: shift the sampled dates daily to cover the whole window
-      sample_every_days: 7
+      budget: auto                # spend SerpApi's remaining monthly quota evenly (Free Plan = 250/month)
+      auto_reserve: 10            # keep 10 searches a month for manual runs / key checks
+      rotate_daily: true          # shift the sampled dates daily so every date pair gets checked
+      sample_every_days: 3
       nights_samples: 2
-      refine_top_k: 2
-      refine_radius_days: 2
+      refine_top_k: 3
+      refine_radius_days: 1
