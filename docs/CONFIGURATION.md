@@ -28,7 +28,8 @@ rejected, so typos fail loudly. Check your config at any time with
 | `destination` | ✔ | IATA code or list. **Fixed.** |
 | `trip_type` | | `round_trip` (default) or `one_way` |
 | `depart_window.start` / `.end` | ✔ | `YYYY-MM-DD` or relative `+Nd`. Past dates are clamped to tomorrow. |
-| `nights` | round trips | `{min, max}` or a single number |
+| `nights` | round trips | `{min, max}` or a single number. Optional when `return_window` is set. |
+| `return_window.start` / `.end` | | Round trips: only search returns inside these dates (e.g. leave Nov 23–Dec 14, return Jan 1–14) |
 | `adults` | | 1–9 (default 1). Prices are for all adults. |
 | `cabin` | | `economy`, `premium_economy`, `business`, `first` |
 | `target_price` | | Alert when the cheapest fare is ≤ this |
@@ -55,7 +56,8 @@ rejected, so typos fail loudly. Check your config at any time with
 | Key | Default | Meaning |
 |---|---|---|
 | `mode` | `smart` | `smart` = sample then zoom; `exhaustive` = every combination (evenly thinned to fit the budget) |
-| `budget` | `60` | Max searches **per provider** for this trip per day |
+| `budget` | `60` | Max searches **per provider** for this trip per day, or `auto`: spread the provider's remaining monthly quota (read from SerpApi's free account endpoint) evenly over the days left in the month, shared across auto trips. Falls back to 7 if the quota can't be read. |
+| `auto_reserve` | `10` | With `budget: auto`, searches held back each month for manual runs and key checks |
 | `sample_every_days` | `3` | Phase-1 departure-date step (auto-widened to fit) |
 | `nights_samples` | `3` | Phase-1 stay lengths spread across `[min, max]` |
 | `refine_top_k` | `5` | Phase-2 seeds (the cheapest phase-1 combos) |

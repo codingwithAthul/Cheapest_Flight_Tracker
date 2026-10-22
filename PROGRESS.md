@@ -5,7 +5,7 @@
 
 _Last updated: 2026-10-21_
 
-## Status: v0.3 — T1 Vancouver ⇄ Kochi live on SerpApi (SERPAPI_API_KEY secret set by Athul)
+## Status: v0.4 — T1 Vancouver ⇄ Kochi with real dates (out Nov 23–Dec 14, back Jan 1–14), SerpApi, auto budget
 
 The full pipeline works end to end with the **mock** provider: plan →
 parallel search → filter → SQLite → insights → report → notify. That
@@ -33,15 +33,14 @@ need an API key. See "Waiting on owner" below.
 
 ## Waiting on owner (decisions only they can make)
 
-1. **Stay length and window.** T1 assumes a 14–35 night stay and departures 2 weeks to 6 months out. Athul hasn't confirmed this yet.
+1. **Merge PR #1**, then run *Actions → Daily flight search → Run workflow* once.
 2. **Report channel.** Reports are committed to `Report/` and shown in the Actions summary. Telegram or email isn't chosen yet.
-3. **Duffel.** Parked: Athul is unsure about the charges. Only the test key exists, and it isn't in secrets.
-4. **SerpApi quota.** The key is confirmed working (Free Plan, 250/month, first live fare CAD 1,803 on Air India). The budget is 7/day, about 217/month.
+3. **Duffel.** Parked: Athul is unsure about the charges.
 
 ## Next up (in order)
 
-1. Merge PR #1, then run *Actions → Daily flight search → Run workflow* once.
-2. Upgrade the SerpApi plan if 7 searches/day turns out too sparse.
+1. After the first real runs, check that `budget: auto` picked a sensible number (search the logs for `auto budget:`).
+2. Optional: add nearby airports (SEA/BLI → TRV) if Athul wants wider options. Each one multiplies the searches.
 3. Roadmap items in PROJECT.md.
 
 ## How to resume quickly
@@ -58,3 +57,4 @@ python -m flight_tracker --db /tmp/t.db run --provider mock --no-notify
 - 2026-10-21: Built v0.1 from an empty repo (README + LICENSE only). Amadeus Self-Service was shut down in July 2026 and Kiwi Tequila is closed to new sign-ups, so they are not supported.
 - 2026-10-21: Athul chose Duffel for search with SerpApi as the final check, and set a rule: one commit per small chunk of code. Added the verify stage, sandbox handling, probe and the live-keys CI job.
 - 2026-10-21: Athul set the SERPAPI_API_KEY secret, parked Duffel, and gave the route Vancouver ⇄ Kochi (T1). Reports now go to `Report/<code> <from> - <to> (Round|One-Way)/` on main. Added rotate_daily and the 7-day best fares section.
+- 2026-10-22: Athul confirmed the dates (out: last week of Nov or 1st/2nd week of Dec; back: 1st/2nd week of Jan) and asked for no transit limits. Added return_window and budget: auto. There are 308 date pairs; auto budget gives about 23/day for the rest of October and about 8/day in November.
