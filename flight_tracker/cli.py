@@ -194,7 +194,10 @@ def cmd_report(cfg: Config, args, storage: Storage, run_date: date) -> int:
     errors = storage.search_errors(run_date)
     md = render_markdown(summaries, run_date, stats, errors)
     html_body = render_html(summaries, run_date, stats)
-    paths = write_report_files(args.output_dir or cfg.report.output_dir, run_date, summaries)
+    out_dir = args.output_dir or cfg.report.output_dir
+    if getattr(args, "provider", None) and not args.output_dir:
+        out_dir = "reports"  # test runs (e.g. --provider mock) never overwrite the real Report/ folder
+    paths = write_report_files(out_dir, run_date, summaries)
     log.info("report written: %s", ", ".join(map(str, paths)))
 
     cheapest = [s for s in summaries if s.today_min is not None]
