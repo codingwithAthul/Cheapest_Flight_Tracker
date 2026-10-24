@@ -1,0 +1,62 @@
+# Cheapest Flight Tracker configuration. Full reference: docs/CONFIGURATION.md
+#
+# Copy to config.yaml and edit. The daily GitHub Action reads config.yaml.
+# Origin and destination are FIXED; dates are FLEXIBLE within the window.
+
+currency: CAD
+workers: 8                    # parallel search threads (each provider also has its own cap)
+database: data/tracker.db
+
+# Search: SerpApi (Google Flights) only, for now. Needs the SERPAPI_API_KEY secret.
+providers:
+  - name: serpapi
+    max_concurrency: 4
+    gl: ca                    # search from Canada's Google Flights (point of sale)
+  # - name: duffel            # add later with a LIVE token (duffel_test_ tokens return fake fares)
+  # - name: mock              # fake data, no keys: python -m flight_tracker run --provider mock
+
+# Optional final check on a second source; off while SerpApi is the only provider.
+# verify:
+#   provider: serpapi
+#   top_k: 5
+
+notifiers:
+  - type: github_summary      # shows the report on the Actions run page (no setup)
+  # - type: telegram          # needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+  # - type: email             # needs SMTP_USERNAME and SMTP_PASSWORD (Gmail App Password)
+  #   to: you@example.com
+  #   only_on_alert: false    # true = only email when a price drops / hits target
+
+report:
+  top_n: 15                   # options listed per trip, sorted by price
+  output_dir: Report          # one folder per trip, e.g. "Report/T1 Vancouver - Kochi (Round)"
+  value_of_hour: 15           # "best value" pick = price + 15/hour of travel; 0 disables
+  drop_alert_percent: 5       # alert when today's cheapest is 5%+ below the previous run
+
+trips:
+  - name: Vancouver to Kochi
+    code: T1                      # report folder: "Report/T1 Vancouver - Kochi (Round)"
+    from_name: Vancouver
+    to_name: Kochi
+    origin: [YVR]
+    destination: [COK]
+    trip_type: round_trip
+    depart_window:                # leave: last week of November or 1st/2nd week of December
+      start: 2026-11-23
+      end: 2026-12-14
+    return_window:                # come back: 1st or 2nd week of January
+      start: 2027-01-01
+      end: 2027-01-14
+    adults: 1
+    cabin: economy
+    # target_price: 1400          # optional: alert when any round trip is at or below this (CAD)
+    # No filters: any number of stops, any transit time or layover, any airline (Athul's call).
+    strategy:
+      mode: smart
+      budget: auto                # spend SerpApi's remaining monthly quota evenly (Free Plan = 250/month)
+      auto_reserve: 10            # keep 10 searches a month for manual runs / key checks
+      rotate_daily: true          # shift the sampled dates daily so every date pair gets checked
+      sample_every_days: 3
+      nights_samples: 2
+      refine_top_k: 3
+      refine_radius_days: 1

@@ -1,0 +1,75 @@
+# Cheapest Flight Tracker configuration. Full reference: docs/CONFIGURATION.md
+#
+# Copy to config.yaml and edit. The daily GitHub Action reads config.yaml.
+# Origin and destination are FIXED; dates are FLEXIBLE within the window.
+
+currency: USD
+workers: 8                    # parallel search threads (each provider also has its own cap)
+database: data/tracker.db
+
+providers:
+  - name: mock                # fake data: works with no keys. Swap for duffel and/or serpapi.
+  # - name: duffel            # needs DUFFEL_ACCESS_TOKEN (free to search; duffel_test_ tokens = sandbox data)
+  #   max_concurrency: 3
+  # - name: serpapi           # needs SERPAPI_API_KEY
+  #   max_concurrency: 4
+
+# Optional final check: a second provider re-prices the top_k cheapest date combos found above.
+# verify:
+#   provider: serpapi
+#   top_k: 5
+
+notifiers:
+  - type: github_summary      # shows the report on the Actions run page (no setup)
+  # - type: telegram          # needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+  # - type: email             # needs SMTP_USERNAME and SMTP_PASSWORD (Gmail App Password)
+  #   to: you@example.com
+  #   only_on_alert: false    # true = only email when a price drops / hits target
+
+report:
+  top_n: 15                   # options listed per trip, sorted by price
+  output_dir: Report          # one folder per trip, e.g. "Report/T1 Vancouver - Kochi (Round)"
+  value_of_hour: 15           # "best value" pick = price + 15/hour of travel; 0 disables
+  drop_alert_percent: 5       # alert when today's cheapest is 5%+ below the previous run
+
+trips:
+  # EXAMPLE ROUTE: replace with your own.
+  - name: Toronto to London
+    origin: [YYZ]                 # one airport or a list, e.g. [YYZ, YTZ]
+    destination: [LHR, LGW]
+    trip_type: round_trip         # or one_way
+    depart_window:
+      start: "+21d"               # YYYY-MM-DD, or +Nd relative to the run date
+      end: "+90d"
+    nights: {min: 7, max: 14}
+    adults: 1
+    cabin: economy                # economy | premium_economy | business | first
+    target_price: 650             # optional: alert when any fare is at or below this
+    filters:                      # all optional; delete any you don't care about
+      max_stops: 1
+      max_price: 1500
+      max_duration_hours: 20      # per direction, including layovers
+      max_layover_hours: 6
+      min_layover_minutes: 60
+      exclude_airlines: []        # IATA codes or names, e.g. [F9, "Spirit"]
+      include_airlines: []        # if set, every flight must be on these airlines
+      depart_after: "06:00"
+      depart_before: "23:30"
+      # allowed_weekdays: [1, 2, 3]   # 0=Mon ... 6=Sun (outbound departure)
+    strategy:
+      mode: smart                 # smart = sample the window then zoom in; exhaustive = every combo
+      budget: 60                  # max searches per provider for this trip per day
+      sample_every_days: 3
+      nights_samples: 3
+      refine_top_k: 5
+      refine_radius_days: 2
+      keep_offers_per_search: 5
+
+  - name: London to Toronto one-way
+    enabled: false                # flip to true to track it too
+    origin: [LHR, LGW]
+    destination: [YYZ]
+    trip_type: one_way
+    depart_window: {start: "+14d", end: "+60d"}
+    filters: {max_stops: 1}
+    strategy: {budget: 30}

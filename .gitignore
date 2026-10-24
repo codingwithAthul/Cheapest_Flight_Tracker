@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+# Local runtime output; the daily workflow stores these on the `data` branch.
+data/
+reports/
+shards/

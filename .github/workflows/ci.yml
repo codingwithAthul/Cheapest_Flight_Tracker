@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # run by hand to also check the live API keys
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - name: Smoke test (mock provider, no network)
+        run: |
+          python -m flight_tracker --config config.example.yaml plan
+          python -m flight_tracker --config config.example.yaml --db /tmp/smoke.db run --provider mock --no-notify > /tmp/report.md
+          grep -q "Daily flight report" /tmp/report.md
+
+  # Proves the real API keys work: one live search per provider in config.yaml.
+  # Manual only (Actions → CI → Run workflow): each run uses 1 SerpApi credit,
+  # and the free plan is only 250/month.
+  live-keys:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      DUFFEL_ACCESS_TOKEN: ${{ secrets.DUFFEL_ACCESS_TOKEN }}
+      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe providers
+        run: |
+          if [ -z "$DUFFEL_ACCESS_TOKEN$SERPAPI_API_KEY" ]; then
+            echo "::notice::No provider secrets set yet; skipping the live key check."
+            exit 0
+          fi
+          python -m flight_tracker probe | tee -a "$GITHUB_STEP_SUMMARY"
